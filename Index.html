@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ClockRoom</title>
+<style>
+  :root{
+    --bg:#081018;
+    --panel:rgba(12,20,31,.92);
+    --panel2:rgba(18,29,43,.88);
+    --line:rgba(166,213,255,.20);
+    --text:#f2f7ff;
+    --muted:#9fb4ca;
+    --cyan:#72dcff;
+    --gold:#ffc75a;
+    --good:#62e39b;
+    --danger:#ff6d7f;
+    --shadow:0 18px 50px rgba(0,0,0,.38);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  button,input,select{font:inherit}
+  button{cursor:pointer}
+  #game{position:fixed;inset:0;display:block;width:100%;height:100%}
+  .screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+  .hidden{display:none!important}
+  .backdrop{position:absolute;inset:0;background:
+    radial-gradient(circle at 50% 20%,rgba(86,182,255,.12),transparent 40%),
+    linear-gradient(180deg,rgba(3,8,15,.28),rgba(3,8,15,.82));
+    pointer-events:none}
+  .card{position:relative;width:min(100%,820px);padding:30px;border:1px solid var(--line);background:linear-gradient(180deg,var(--panel2),var(--panel));backdrop-filter:blur(18px);box-shadow:var(--shadow);border-radius:24px}
+  .brand{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+  .brandMark{width:58px;height:58px;border-radius:18px;background:linear-gradient(145deg,#b6efff,#4ec6ee);display:grid;place-items:center;box-shadow:0 0 30px rgba(114,220,255,.22)}
+  .brandMark::before{content:"";width:30px;height:30px;border:3px solid #07131b;border-radius:50%;box-shadow:inset 0 0 0 7px rgba(7,19,27,.08)}
+  h1{font-size:40px;letter-spacing:.08em;margin:0}
+  .subtitle{color:var(--muted);margin:4px 0 0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .field{display:flex;flex-direction:column;gap:7px}
+  .field label{font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+  input,select{width:100%;padding:13px 14px;border-radius:12px;border:1px solid rgba(163,211,255,.17);outline:none;background:rgba(3,10,18,.72);color:var(--text)}
+  input:focus,select:focus{border-color:rgba(114,220,255,.72);box-shadow:0 0 0 3px rgba(114,220,255,.11)}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+  .btn{border:1px solid rgba(255,255,255,.11);border-radius:12px;padding:12px 15px;color:#07131b;font-weight:800;background:linear-gradient(180deg,#95ebff,#54c8ed);box-shadow:0 10px 22px rgba(35,177,221,.18)}
+  .btn.secondary{color:var(--text);background:rgba(255,255,255,.06);box-shadow:none}
+  .btn.danger{color:#fff;background:linear-gradient(180deg,#ff8190,#ec5669)}
+  .btn:disabled{opacity:.42;cursor:not-allowed}
+  .section{margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08)}
+  .sectionTitle{font-weight:800;margin-bottom:10px}
+  .roomCode{display:flex;gap:10px;align-items:stretch}
+  .roomCode strong{flex:1;display:flex;align-items:center;padding:12px 14px;background:rgba(114,220,255,.08);border:1px dashed rgba(114,220,255,.36);border-radius:12px;font-size:19px;letter-spacing:.14em;word-break:break-all}
+  .small{font-size:12px;color:var(--muted);line-height:1.55}
+  .players{display:grid;gap:8px;max-height:220px;overflow:auto}
+  .playerRow{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--good);box-shadow:0 0 14px rgba(98,227,155,.35)}
+  .playerRow .meta{margin-left:auto;color:var(--muted);font-size:12px}
+  #status{margin-top:14px;min-height:20px;color:#d6e7f8;font-size:13px}
+  .tip{margin-top:14px;padding:11px 13px;border-radius:12px;background:rgba(255,199,90,.08);border:1px solid rgba(255,199,90,.18);color:#f5dfac;font-size:12px}
+  #hud{position:fixed;inset:0;z-index:10;pointer-events:none}
+  .hudTop{position:absolute;top:18px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px}
+  .timer{min-width:170px;text-align:center;padding:11px 18px;border-radius:14px;background:rgba(8,16,24,.82);border:1px solid rgba(165,213,255,.18);backdrop-filter:blur(12px);box-shadow:0 12px 30px rgba(0,0,0,.22)}
+  .timer .label{font-size:10px;letter-spacing:.18em;color:var(--muted)}
+  .timer .value{font-variant-numeric:tabular-nums;font-weight:900;font-size:32px;line-height:1.1;margin-top:2px}
+  .roleBadge{padding:10px 14px;border-radius:12px;background:rgba(8,16,24,.82);border:1px solid rgba(165,213,255,.18);backdrop-filter:blur(12px);font-size:12px;font-weight:800}
+  .roleClock{color:var(--gold);border-color:rgba(255,199,90,.28)}
+  .roleHuman{color:#9de8ff;border-color:rgba(114,220,255,.28)}
+  .infoPanel{position:absolute;left:18px;top:18px;padding:12px 14px;border-radius:14px;background:rgba(8,16,24,.76);border:1px solid rgba(165,213,255,.15);backdrop-filter:blur(12px);font-size:12px;line-height:1.55;max-width:300px}
+  .infoPanel b{font-size:13px}
+  .clockPanel{position:absolute;right:18px;top:18px;width:250px;padding:14px;border-radius:16px;background:rgba(8,16,24,.82);border:1px solid rgba(255,199,90,.18);backdrop-filter:blur(14px);pointer-events:auto;box-shadow:0 12px 34px rgba(0,0,0,.25)}
+  .clockPanel h3{margin:0 0 8px;font-size:13px;color:var(--gold)}
+  .clockReadout{font-size:27px;font-weight:900;letter-spacing:.08em;font-variant-numeric:tabular-nums}
+  .speedLine{display:flex;gap:8px;align-items:center;margin-top:9px}
+  .speedLine input{padding:9px 10px}
+  .speedLine span{font-size:11px;color:var(--muted);white-space:nowrap}
+  #notice{position:absolute;left:50%;bottom:60px;transform:translateX(-50%) translateY(15px);opacity:0;padding:11px 15px;border-radius:12px;background:rgba(8,16,24,.88);border:1px solid rgba(165,213,255,.18);backdrop-filter:blur(12px);transition:.18s ease;font-size:13px}
+  #notice.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #crosshair{position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%);opacity:.85}
+  #crosshair::before,#crosshair::after{content:"";position:absolute;background:rgba(255,255,255,.84);box-shadow:0 0 10px rgba(114,220,255,.2)}
+  #crosshair::before{left:10px;top:2px;width:2px;height:18px}
+  #crosshair::after{left:2px;top:10px;width:18px;height:2px}
+  .winCard{text-align:center;width:min(100%,560px)}
+  .winIcon{font-size:56px;filter:drop-shadow(0 10px 28px rgba(114,220,255,.22));margin-bottom:8px}
+  .winCard h2{font-size:36px;margin:0 0 8px}
+  .winCard p{margin:0;color:var(--muted);line-height:1.6}
+  .winnerName{font-size:22px;font-weight:900;color:var(--cyan);margin:14px 0}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}.card{padding:21px}.hudTop{top:10px}.infoPanel{left:10px;top:92px;max-width:220px}.clockPanel{right:10px;top:92px;width:220px}.timer{min-width:140px}.roleBadge{display:none}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="lobby" class="screen">
+  <div class="backdrop"></div>
+  <div class="card">
+    <div class="brand">
+      <div class="brandMark"></div>
+      <div>
+        <h1>CLOCKROOM</h1>
+        <div class="subtitle">Find the one clock that doesn't belong.</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="field">
+        <label>プレイヤー名</label>
+        <input id="nameInput" maxlength="16" placeholder="たろたろ" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>マップ</label>
+        <select id="mapSelect">
+          <option value="museum">時計博物館</option>
+          <option value="workshop">時計工房</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="hostBtn" class="btn">ホストとしてルーム作成</button>
+      <button id="joinBtn" class="btn secondary">ゲストとして参加</button>
+    </div>
+
+    <div id="joinArea" class="section hidden">
+      <div class="sectionTitle">ルームコード / ホストID</div>
+      <div class="roomCode">
+        <input id="roomInput" maxlength="80" placeholder="例: clockroom-AB12CD" autocomplete="off" />
+        <button id="joinConfirmBtn" class="btn">参加</button>
+      </div>
+      <div class="small" style="margin-top:8px">ホストから受け取ったリンクの room= の後ろ、またはルームコードを貼り付けてください。</div>
+    </div>
+
+    <div id="roomArea" class="section hidden">
+      <div class="sectionTitle">ルーム</div>
+      <div class="roomCode">
+        <strong id="roomCodeText">接続中…</strong>
+        <button id="copyBtn" class="btn secondary">リンクをコピー</button>
+      </div>
+      <div class="small" style="margin-top:8px">このコードを友達に送って参加してもらえます。最大4人。</div>
+
+      <div style="margin-top:14px" class="sectionTitle">参加者 <span id="countText" style="color:var(--muted);font-weight:600">0 / 4</span></div>
+      <div id="players" class="players"></div>
+
+      <div id="hostControls" class="actions hidden">
+        <button id="startBtn" class="btn">ゲーム開始</button>
+      </div>
+      <div class="tip">2人以上で開始できます。ゲーム開始後は「1人だけ時計」、残りが人間の鬼になります。</div>
+    </div>
+
+    <div id="status"></div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div class="hudTop">
+    <div class="timer"><div class="label">残り時間</div><div id="timerValue" class="value">05:00</div></div>
+    <div id="roleBadge" class="roleBadge">役職: 接続中</div>
+  </div>
+  <div class="infoPanel">
+    <b id="mapLabel">時計博物館</b><br>
+    <span id="controlHint">WASDで移動 / マウスで見る</span><br>
+    <span>人間: 時計を画面中央に合わせてクリック</span>
+  </div>
+  <div id="clockPanel" class="clockPanel hidden">
+    <h3>あなたは「時計」です</h3>
+    <div id="clockReadout" class="clockReadout">03:00</div>
+    <div class="small">自分の時計が1分進むまでの秒数を変更できます。</div>
+    <div class="speedLine">
+      <input id="speedInput" type="number" min="0.25" max="60" step="0.25" value="5" />
+      <span>秒 / 1分</span>
+    </div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="notice"></div>
+</div>
+
+<div id="winner" class="screen hidden">
+  <div class="backdrop"></div>
+  <div class="card winCard">
+    <div class="winIcon" id="winIcon">⏱</div>
+    <h2 id="winnerTitle">ゲーム終了</h2>
+    <div class="winnerName" id="winnerName">---</div>
+    <p id="winnerDesc">結果を同期しています。</p>
+    <div class="actions" style="justify-content:center;margin-top:22px">
+      <button id="backLobbyBtn" class="btn">ロビーへ戻る</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // ============================================================
+  // ClockRoom - single HTML prototype
+  // Three.js r160 + PeerJS 1.5.4
+  // Max 4 players / host authoritative lobby + game state
+  // ============================================================
+
+  const MAX_PLAYERS = 4;
+  const GAME_TIME = 300;
+  const START_MINUTES = 180; // 03:00
+  const STORAGE_NAME = 'ClockRoom_PlayerName_v1';
+  const STORAGE_SPEED = 'ClockRoom_ClockSpeed_v1';
+
+  const canvas = document.getElementById('game');
+  const lobby = document.getElementById('lobby');
+  const winnerScreen = document.getElementById('winner');
+  const hud = document.getElementById('hud');
+  const statusEl = document.getElementById('status');
+  const nameInput = document.getElementById('nameInput');
+  const mapSelect = document.getElementById('mapSelect');
+  const hostBtn = document.getElementById('hostBtn');
+  const joinBtn = document.getElementById('joinBtn');
+  const joinArea = document.getElementById('joinArea');
+  const roomInput = document.getElementById('roomInput');
+  const joinConfirmBtn = document.getElementById('joinConfirmBtn');
+  const roomArea = document.getElementById('roomArea');
+  const roomCodeText = document.getElementById('roomCodeText');
+  const copyBtn = document.getElementById('copyBtn');
+  const playersEl = document.getElementById('players');
+  const countText = document.getElementById('countText');
+  const hostControls = document.getElementById('hostControls');
+  const startBtn = document.getElementById('startBtn');
+  const roleBadge = document.getElementById('roleBadge');
+  const timerValue = document.getElementById('timerValue');
+  const clockPanel = document.getElementById('clockPanel');
+  const clockReadout = document.getElementById('clockReadout');
+  const speedInput = document.getElementById('speedInput');
+  const mapLabel = document.getElementById('mapLabel');
+  const controlHint = document.getElementById('controlHint');
+  const noticeEl = document.getElementById('notice');
+  const winIcon = document.getElementById('winIcon');
+  const winnerTitle = document.getElementById('winnerTitle');
+  const winnerName = document.getElementById('winnerName');
+  const winnerDesc = document.getElementById('winnerDesc');
+  const backLobbyBtn = document.getElementById('backLobbyBtn');
+
+  nameInput.value = localStorage.getItem(STORAGE_NAME) || '';
+  speedInput.value = localStorage.getItem(STORAGE_SPEED) || '5';
+
+  const state = {
+    mode: 'menu', // menu / host / guest / playing / ended
+    peer: null,
+    hostConn: null,
+    roomId: '',
+    isHost: false,
+    playerId: '',
+    name: '',
+    mapId: 'museum',
+    started: false,
+    role: null,
+    actualClockIndex: -1,
+    startTime: 0,
+    endTime: 0,
+    remaining: GAME_TIME,
+    clockMinutes: START_MINUTES,
+    clockSpeed: Number(speedInput.value) || 5,
+    roomPlayers: new Map(),
+    conns: new Map(),
+    playerStates: new Map(),
+    lastBroadcast: 0,
+    lastLocalSend: 0,
+    lastHostTick: performance.now(),
+    noticeTimer: 0,
+    winner: null,
+    gameOver: false,
+  };
+
+  const mapNames = { museum:'時計博物館', workshop:'時計工房' };
+
+  // -------------------- THREE --------------------
+  let scene, camera, renderer, clock3d;
+  let worldRoot = null;
+  let clockEntities = [];
+  let remoteEntities = new Map();
+  let playerRig = null;
+  let localPlayer = { x:0, y:1.4, z:0, yaw:0, pitch:0, vx:0, vz:0, vy:0 };
+  let keys = Object.create(null);
+  let mouse = { locked:false };
+  let pointerLook = { yaw:0, pitch:0 };
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2(0,0);
+  const tmpVec = new THREE.Vector3();
+  const tmpQuat = new THREE.Quaternion();
+
+  const ROOM = { halfX:28, halfZ:18, floorY:0.05, ceilingY:18.0 };
+
+  function initThree(){
+    renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x071019);
+    scene.fog = new THREE.Fog(0x071019, 45, 100);
+
+    camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.05, 160);
+    camera.position.set(0,6,15);
+
+    const hemi = new THREE.HemisphereLight(0xbbe9ff, 0x1d2530, 1.55);
+    scene.add(hemi);
+    const key = new THREE.DirectionalLight(0xffffff, 2.25);
+    key.position.set(5,17,6);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048,2048);
+    key.shadow.camera.left = -35; key.shadow.camera.right=35; key.shadow.camera.top=25; key.shadow.camera.bottom=-25;
+    scene.add(key);
+
+    const ambient = new THREE.PointLight(0x5ccfff, 20, 36, 2);
+    ambient.position.set(0,12,0);
+    scene.add(ambient);
+
+    window.addEventListener('resize', onResize);
+    document.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','Space'].includes(e.code)) e.preventDefault();
+    });
+    document.addEventListener('keyup', e => { keys[e.code] = false; });
+    document.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('click', onCanvasClick);
+    document.addEventListener('pointerlockchange', () => { mouse.locked = document.pointerLockElement === canvas; });
+
+    buildWorld('museum');
+    requestAnimationFrame(renderLoop);
+  }
+
+  function onResize(){
+    if(!renderer) return;
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  }
+
+  function material(color, roughness=.72, metalness=.05, emissive=0){
+    return new THREE.MeshStandardMaterial({color, roughness, metalness, emissive: emissive || 0, emissiveIntensity: emissive ? .22 : 0});
+  }
+
+  function makeFloor(mapId){
+    const color = mapId === 'museum' ? 0x233442 : 0x3c2e21;
+    const m = material(color,.88,.02);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(56,.1,36),m);
+    mesh.position.y=0; mesh.receiveShadow=true; worldRoot.add(mesh);
+    const grid = new THREE.GridHelper(56,28, mapId==='museum' ? 0x456070 : 0x5a4734, mapId==='museum' ? 0x1c2b35 : 0x4a392b);
+    grid.position.y=.061; grid.scale.z=36/56; worldRoot.add(grid);
+  }
+
+  function makeWalls(mapId){
+    const wallMat = material(mapId==='museum' ? 0x15212b : 0x2a211b,.8,.08);
+    const accentMat = material(mapId==='museum' ? 0x304d60 : 0x59402d,.65,.18);
+    const walls = [
+      [0,9,-18,56,18,.5], [0,9,18,56,18,.5],
+      [-28,9,0,.5,18,36], [28,9,0,.5,18,36],
+      [0,18,0,56,.5,36]
+    ];
+    for(const [x,y,z,sx,sy,sz] of walls){
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), wallMat);
+      mesh.position.set(x,y,z); mesh.receiveShadow=true; mesh.castShadow=true; worldRoot.add(mesh);
+    }
+    for(let i=0;i<7;i++){
+      const x=-24+i*8;
+      const bar1 = new THREE.Mesh(new THREE.BoxGeometry(.12,17,.12),accentMat); bar1.position.set(x,9,-17.65); worldRoot.add(bar1);
+      const bar2 = new THREE.Mesh(new THREE.BoxGeometry(.12,17,.12),accentMat); bar2.position.set(x,9,17.65); worldRoot.add(bar2);
+    }
+  }
+
+  function addMuseumDecor(){
+    const pedestalMat = material(0x63727f,.64,.18);
+    const baseMat = material(0x1a2630,.78,.12);
+    const goldMat = material(0xc7a25e,.36,.56);
+    for(let i=0;i<8;i++){
+      const x = -21 + i*6;
+      const ped = new THREE.Mesh(new THREE.BoxGeometry(4.2,1.1,3.5),pedestalMat);
+      ped.position.set(x,.62,0); ped.receiveShadow=true; ped.castShadow=true; worldRoot.add(ped);
+      const base = new THREE.Mesh(new THREE.BoxGeometry(3.6,.25,2.9),baseMat);
+      base.position.set(x,1.30,0); worldRoot.add(base);
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(6.2,.08,10,64), goldMat);
+    ring.rotation.x=Math.PI/2; ring.position.y=16.8; worldRoot.add(ring);
+    for(let i=0;i<12;i++){
+      const a = i/12*Math.PI*2;
+      const lamp = new THREE.PointLight(0xbceeff, 4.8, 9, 2);
+      lamp.position.set(Math.cos(a)*12,15.8,Math.sin(a)*7.2);
+      worldRoot.add(lamp);
+    }
+  }
+
+  function addWorkshopDecor(){
+    const wood=material(0x674b34,.8,.04), dark=material(0x211a15,.72,.1), metal=material(0x8a785e,.5,.55);
+    for(let i=0;i<10;i++){
+      const x=-24+(i%5)*12;
+      const z=i<5 ? -5 : 7;
+      const pillar=new THREE.Mesh(new THREE.CylinderGeometry(.85,.95,7,12),wood);
+      pillar.position.set(x,3.5,z); pillar.castShadow=true; pillar.receiveShadow=true; worldRoot.add(pillar);
+      const gear=new THREE.Mesh(new THREE.TorusGeometry(2.0,.3,12,24),metal);
+      gear.rotation.x=Math.PI/2; gear.position.set(x,7.1,z); worldRoot.add(gear);
+    }
+    for(let i=0;i<6;i++){
+      const crate=new THREE.Mesh(new THREE.BoxGeometry(4,2.6,4),dark);
+      crate.position.set(-18+i*7.2,1.3,12.2); crate.castShadow=true; crate.receiveShadow=true; worldRoot.add(crate);
+    }
+    for(let i=0;i<9;i++){
+      const gear=new THREE.Mesh(new THREE.TorusGeometry(3.3+i%3,.16,10,48),metal);
+      gear.rotation.x=Math.PI/2; gear.position.set(-18+(i%3)*18,15.0, -9+(Math.floor(i/3))*8.5); worldRoot.add(gear);
+    }
+  }
+
+  function createClockMesh({dynamic=false, index=-1}={}){
+    const g=new THREE.Group();
+    g.userData.clockIndex=index;
+    const outer=new THREE.Mesh(new THREE.CylinderGeometry(1.22,1.22,.38,40), material(0x131a1f,.33,.52));
+    outer.rotation.x=Math.PI/2; outer.castShadow=true; outer.receiveShadow=true; g.add(outer);
+    const face=new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.05,.08,40), material(0xf4f0e5,.62,.05));
+    face.rotation.x=Math.PI/2; face.position.z=.21; face.castShadow=true; g.add(face);
+    const glass=new THREE.Mesh(new THREE.CylinderGeometry(1.02,1.02,.035,40), new THREE.MeshStandardMaterial({color:0xbfe9ff,roughness:.05,metalness:.08,transparent:true,opacity:.15}));
+    glass.rotation.x=Math.PI/2; glass.position.z=.27; g.add(glass);
+    const handMat=material(0x10161a,.4,.15);
+    const hour=new THREE.Mesh(new THREE.BoxGeometry(.13,.58,.05),handMat); hour.position.set(0,.25,.35); g.add(hour);
+    const minute=new THREE.Mesh(new THREE.BoxGeometry(.085,.78,.05),handMat); minute.position.set(0,.34,.36); g.add(minute);
+    const center=new THREE.Mesh(new THREE.SphereGeometry(.09,12,8),handMat); center.position.z=.39; g.add(center);
+    g.userData.hourHand=hour; g.userData.minuteHand=minute; g.userData.baseRotation=0;
+    if(dynamic) g.userData.dynamic=true;
+    return g;
+  }
+
+  function setClockHands(group, minutes){
+    if(!group || !group.userData.minuteHand) return;
+    const m = ((minutes%1440)+1440)%1440;
+    const hourAngle = (m/60)*Math.PI*2;
+    const minuteAngle = (m%60)/60*Math.PI*2;
+    group.userData.hourHand.rotation.z = -hourAngle;
+    group.userData.minuteHand.rotation.z = -minuteAngle;
+  }
+
+  function surfaceTransform(normal, pos){
+    const gQ = new THREE.Quaternion();
+    gQ.setFromUnitVectors(new THREE.Vector3(0,0,1), normal.clone().normalize());
+    return { position:pos, quaternion:gQ };
+  }
+
+  function clockPlacements(mapId){
+    const out=[];
+    // 40 wall clocks: north/south
+    let idx=0;
+    for(const z of [-17.55,17.55]){
+      for(let row=0;row<2;row++){
+        for(let i=0;i<10;i++){
+          const x=-23.5+i*5.22;
+          const y=5.0+row*6.0;
+          out.push({pos:new THREE.Vector3(x,y,z),normal:new THREE.Vector3(0,0,z<0?1:-1)}); idx++;
+        }
+      }
+    }
+    // 30 side-wall clocks
+    for(const x of [-27.55,27.55]){
+      for(let row=0;row<2;row++){
+        for(let i=0;i<7;i++){
+          const z=-14.3+i*4.75;
+          const y=4.3+row*6.2;
+          out.push({pos:new THREE.Vector3(x,y,z),normal:new THREE.Vector3(x<0?1:-1,0,0)}); idx++;
+        }
+      }
+    }
+    // 15 floor / display clocks
+    for(let i=0;i<15;i++){
+      const x=-24+(i%5)*12;
+      const z=-6+Math.floor(i/5)*6;
+      const y=1.7;
+      out.push({pos:new THREE.Vector3(x,y,z),normal:new THREE.Vector3(0,1,0)}); idx++;
+    }
+    // 14 ceiling clocks
+    for(let i=0;i<14;i++){
+      const x=-21+(i%7)*7;
+      const z=-11+Math.floor(i/7)*22;
+      const y=17.45;
+      out.push({pos:new THREE.Vector3(x,y,z),normal:new THREE.Vector3(0,-1,0)}); idx++;
+    }
+    if(out.length!==99) console.warn('Clock count is not 99:',out.length);
+    if(mapId==='workshop'){
+      // A subtle alternate arrangement shift for the second map while retaining 99 clocks.
+      for(let i=0;i<out.length;i++){
+        const p=out[i];
+        if(i%3===0) p.pos.x*=.94;
+        if(i%5===0) p.pos.z*=.90;
+      }
+    }
+    return out;
+  }
+
+  function buildWorld(mapId){
+    if(worldRoot) scene.remove(worldRoot);
+    worldRoot=new THREE.Group(); scene.add(worldRoot);
+    clockEntities=[];
+    remoteEntities.clear();
+    playerRig=null;
+    scene.background=new THREE.Color(mapId==='museum'?0x061019:0x120c08);
+    scene.fog.color.copy(scene.background);
+
+    makeFloor(mapId); makeWalls(mapId);
+    if(mapId==='museum') addMuseumDecor(); else addWorkshopDecor();
+
+    const placements=clockPlacements(mapId);
+    for(let i=0;i<placements.length;i++){
+      const c=createClockMesh({index:i});
+      c.position.copy(placements[i].pos);
+      c.quaternion.copy(surfaceTransform(placements[i].normal,placements[i].pos).quaternion);
+      c.userData.normal=placements[i].normal.clone();
+      c.userData.home=placements[i].pos.clone();
+      setClockHands(c,START_MINUTES);
+      worldRoot.add(c); clockEntities.push(c);
+    }
+    if(state.actualClockIndex>=0 && state.actualClockIndex<clockEntities.length){
+      const actual=clockEntities[state.actualClockIndex];
+      actual.userData.isActual=true;
+      // The moving player-clock occupies this slot; hide the old static decoy.
+      actual.visible=false;
+      actual.children.forEach(ch=>{ if(ch.material) ch.material = ch.material.clone(); });
+      if(actual.children[1] && actual.children[1].material) actual.children[1].material.emissive.setHex(0x6a4012);
+    }
+    addMapSigns(mapId);
+  }
+
+  function addMapSigns(mapId){
+    const canvasTex=document.createElement('canvas'); canvasTex.width=1024; canvasTex.height=256;
+    const ctx=canvasTex.getContext('2d');
+    ctx.fillStyle='rgba(10,16,24,0.86)'; ctx.fillRect(0,0,1024,256);
+    ctx.strokeStyle='rgba(160,220,255,.42)'; ctx.lineWidth=8; ctx.strokeRect(8,8,1008,240);
+    ctx.fillStyle='#eaf7ff'; ctx.font='bold 72px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(mapNames[mapId],512,128);
+    const tex=new THREE.CanvasTexture(canvasTex); tex.colorSpace=THREE.SRGBColorSpace;
+    const mat=new THREE.MeshBasicMaterial({map:tex,transparent:true});
+    const sign=new THREE.Mesh(new THREE.PlaneGeometry(12,3),mat);
+    sign.position.set(0,14.2,-17.25); sign.rotation.y=Math.PI; worldRoot.add(sign);
+  }
+
+  function createPlayerRig(player, local=false){
+    if(player.role==='clock') return createClockPlayerRig(player,local);
+    return createHumanRig(player,local);
+  }
+
+  function createClockPlayerRig(player, local){
+    const group=new THREE.Group();
+    const c=createClockMesh({dynamic:true,index:state.actualClockIndex});
+    c.scale.setScalar(1.08); group.add(c);
+    const aura=new THREE.Mesh(new THREE.TorusGeometry(1.45,.045,12,48),new THREE.MeshBasicMaterial({color:0xffc75a,transparent:true,opacity:.55}));
+    aura.rotation.x=Math.PI/2; aura.position.z=.05; c.add(aura);
+    const label=makeNameLabel(player.name,0xffd77d);
+    label.position.set(0,2.0,0); group.add(label);
+    worldRoot.add(group);
+    group.userData.body=c; group.userData.aura=aura; group.userData.label=label; group.userData.anim=0;
+    group.userData.clockIndex=state.actualClockIndex;
+    return group;
+  }
+
+  function createHumanRig(player,local){
+    const group=new THREE.Group();
+    const palette=[0x4bc6ff,0xff8d9a,0x9c8cff,0x64dc9c];
+    const bodyColor=palette[Math.abs(hashString(player.id||player.name||'p'))%palette.length];
+    const skin=0xf0bd98;
+    const cloth=material(bodyColor,.65,.08), skinMat=material(skin,.68,.03), shoe=material(0x101820,.45,.15);
+    const torso=new THREE.Mesh(new THREE.BoxGeometry(1.0,1.45,.58),cloth); torso.position.y=2.0; torso.castShadow=true; group.add(torso);
+    const neck=new THREE.Mesh(new THREE.CylinderGeometry(.17,.17,.25,12),skinMat); neck.position.y=2.78; neck.castShadow=true; group.add(neck);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(.42,18,14),skinMat); head.position.y=3.28; head.castShadow=true; group.add(head);
+    const eyeMat=material(0x172128,.25,.02);
+    for(const sx of [-.13,.13]){const e=new THREE.Mesh(new THREE.SphereGeometry(.045,8,8),eyeMat);e.position.set(sx,3.35,.39);group.add(e)}
+    const limbData=[
+      {name:'la',x:-.68,y:2.15,rot:-.1}, {name:'ra',x:.68,y:2.15,rot:.1},
+      {name:'ll',x:-.27,y:.75,rot:0}, {name:'rl',x:.27,y:.75,rot:0}
+    ];
+    for(const d of limbData){
+      const upper=new THREE.Group(); upper.position.set(d.x,d.y,0); upper.rotation.z=d.rot;
+      const isArm=d.name.endsWith('a');
+      const mesh=new THREE.Mesh(new THREE.BoxGeometry(isArm?.30:.34,isArm?1.25:1.45,.34), isArm?skinMat:cloth);
+      mesh.position.y=-(isArm?.56:.66); mesh.castShadow=true; upper.add(mesh); group.add(upper); group.userData[d.name]=upper;
+      if(!isArm){const sh=new THREE.Mesh(new THREE.BoxGeometry(.43,.22,.62),shoe); sh.position.set(0,-1.43,.06);sh.castShadow=true;upper.add(sh)}
+    }
+    const label=makeNameLabel(player.name,bodyColor); label.position.set(0,4.15,0); group.add(label);
+    worldRoot.add(group);
+    group.userData.torso=torso; group.userData.head=head; group.userData.label=label; group.userData.walkTime=0;
+    return group;
+  }
+
+  function makeNameLabel(name,color){
+    const c=document.createElement('canvas'); c.width=512;c.height=128; const ctx=c.getContext('2d');
+    ctx.clearRect(0,0,512,128);
+    ctx.font='700 46px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.lineWidth=10; ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.strokeText(name||'Player',256,64);
+    ctx.fillStyle='#ffffff'; ctx.fillText(name||'Player',256,64);
+    const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
+    const m=new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false}); const s=new THREE.Sprite(m); s.scale.set(4.4,1.1,1); return s;
+  }
+
+  function hashString(s){let h=2166136261; for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)} return h>>>0;}
+
+  function updateHumanAnim(rig, moving, dt){
+    if(!rig) return;
+    rig.userData.walkTime += dt*(moving?8:1.8);
+    const t=rig.userData.walkTime;
+    const amp=moving?.72:0.06;
+    const swing=Math.sin(t)*amp;
+    const swing2=Math.sin(t+Math.PI)*amp;
+    if(rig.userData.la) rig.userData.la.rotation.x=swing;
+    if(rig.userData.ra) rig.userData.ra.rotation.x=swing2;
+    if(rig.userData.ll) rig.userData.ll.rotation.x=swing2;
+    if(rig.userData.rl) rig.userData.rl.rotation.x=swing;
+    rig.position.y = moving ? Math.abs(Math.sin(t*2))*0.035 : 0;
+  }
+
+  function placeLocalRig(){
+    if(!state.role) return;
+    if(playerRig) worldRoot.remove(playerRig);
+    const p={id:state.playerId,name:state.name,role:state.role};
+    playerRig=createPlayerRig(p,true);
+    playerRig.position.set(localPlayer.x,0,localPlayer.z);
+    if(state.role==='clock') playerRig.position.y=localPlayer.y;
+    state.playerStates.set(state.playerId,{id:state.playerId,name:state.name,role:state.role,x:localPlayer.x,y:localPlayer.y,z:localPlayer.z,yaw:localPlayer.yaw,pitch:localPlayer.pitch,clockMinutes:state.clockMinutes});
+  }
+
+  function updateRemotePlayers(snapshot){
+    const seen=new Set();
+    for(const p of snapshot.players||[]){
+      if(p.id===state.playerId) continue;
+      seen.add(p.id);
+      let entity=remoteEntities.get(p.id);
+      if(!entity || entity.userData.role!==p.role){
+        if(entity) worldRoot.remove(entity);
+        entity=createPlayerRig(p,false); entity.userData.role=p.role; remoteEntities.set(p.id,entity);
+      }
+      entity.position.lerp(new THREE.Vector3(p.x,p.role==='clock'?p.y:0,p.z),.55);
+      entity.rotation.y=p.yaw||0;
+      entity.userData.targetMoving=Boolean(p.moving);
+      entity.userData.clockMinutes=p.clockMinutes||START_MINUTES;
+      if(p.role==='clock' && entity.userData.body) setClockHands(entity.userData.body,entity.userData.clockMinutes||START_MINUTES);
+    }
+    for(const [id,entity] of remoteEntities){
+      if(!seen.has(id)){worldRoot.remove(entity);remoteEntities.delete(id)}
+    }
+  }
+
+  function updateCamera(dt){
+    if(!state.started) return;
+    const forward=new THREE.Vector3(Math.sin(pointerLook.yaw),0,Math.cos(pointerLook.yaw));
+    const target=new THREE.Vector3(localPlayer.x, localPlayer.y + (state.role==='clock'?0:2.1), localPlayer.z);
+    const distance=state.role==='clock'?6.3:6.6;
+    const height=state.role==='clock'?1.9:2.25;
+    const camPos=new THREE.Vector3(
+      localPlayer.x - forward.x*distance,
+      target.y + height,
+      localPlayer.z - forward.z*distance
+    );
+    camera.position.lerp(camPos,1-Math.pow(.001,dt));
+    const look=new THREE.Vector3(localPlayer.x + forward.x*1.5, target.y + (state.role==='clock'?0.1:-.1), localPlayer.z + forward.z*1.5);
+    camera.lookAt(look);
+  }
+
+  function updateLocalMovement(dt){
+    if(!state.started || state.gameOver) return;
+    let ix=0, iz=0, iy=0;
+    if(keys.KeyW) iz-=1;
+    if(keys.KeyS) iz+=1;
+    if(keys.KeyA) ix-=1;
+    if(keys.KeyD) ix+=1;
+    if(state.role==='clock'){
+      if(keys.KeyQ) iy+=1;
+      if(keys.KeyE) iy-=1;
+      if(keys.Space) iy+=1;
+      if(ix||iz||iy){
+        const len=Math.hypot(ix,iz,iy)||1; ix/=len;iz/=len;iy/=len;
+        const s=10.0;
+        const sin=Math.sin(pointerLook.yaw), cos=Math.cos(pointerLook.yaw);
+        localPlayer.x += (ix*cos + iz*sin)*s*dt;
+        localPlayer.z += (iz*cos - ix*sin)*s*dt;
+        localPlayer.y += iy*s*dt;
+        localPlayer.x=Math.max(-26.4,Math.min(26.4,localPlayer.x));
+        localPlayer.z=Math.max(-16.4,Math.min(16.4,localPlayer.z));
+        localPlayer.y=Math.max(.9,Math.min(17.1,localPlayer.y));
+      }
+      if(playerRig){playerRig.position.set(localPlayer.x,localPlayer.y,localPlayer.z); playerRig.rotation.y=pointerLook.yaw;}
+    }else{
+      if(ix||iz){
+        const len=Math.hypot(ix,iz)||1; ix/=len; iz/=len;
+        const s=7.4;
+        const sin=Math.sin(pointerLook.yaw), cos=Math.cos(pointerLook.yaw);
+        localPlayer.x += (ix*cos + iz*sin)*s*dt;
+        localPlayer.z += (iz*cos - ix*sin)*s*dt;
+        localPlayer.x=Math.max(-25.3,Math.min(25.3,localPlayer.x));
+        localPlayer.z=Math.max(-15.3,Math.min(15.3,localPlayer.z));
+      }
+      localPlayer.y=1.4;
+      if(playerRig){playerRig.position.set(localPlayer.x,0,localPlayer.z); playerRig.rotation.y=pointerLook.yaw; updateHumanAnim(playerRig,Boolean(ix||iz),dt);}
+    }
+  }
+
+  function onMouseMove(e){
+    if(!mouse.locked) return;
+    const sens=.0022;
+    pointerLook.yaw -= e.movementX*sens;
+    pointerLook.pitch -= e.movementY*sens;
+    pointerLook.pitch=Math.max(-.35,Math.min(.25,pointerLook.pitch));
+  }
+
+  function onCanvasClick(){
+    if(!state.started || state.gameOver) return;
+    if(!mouse.locked){ canvas.requestPointerLock?.(); return; }
+    if(state.role!=='human') return;
+    raycaster.setFromCamera(ndc,camera);
+    const clickable=[];
+    for(const c of clockEntities){ if(c.visible) clickable.push(c); }
+    for(const e of remoteEntities.values()){
+      if(e.userData.role==='clock' && e.userData.body) clickable.push(e.userData.body);
+    }
+    const hits=raycaster.intersectObjects(clickable,true);
+    if(!hits.length) return;
+    let obj=hits[0].object;
+    while(obj && !Object.prototype.hasOwnProperty.call(obj.userData,'clockIndex')) obj=obj.parent;
+    if(!obj) return;
+    const idx=obj.userData.clockIndex;
+    if(idx===state.actualClockIndex){
+      sendToHost({type:'claim', clockIndex:idx});
+      showNotice('その時計だ！ 判定中…');
+    }else{
+      showNotice('違う時計だ！');
+    }
+  }
+
+  function renderLoop(now){
+    const dt=Math.min(.05,(now-(renderLoop.last||now))/1000); renderLoop.last=now;
+    updateLocalMovement(dt);
+    updateCamera(dt);
+
+    for(const [id,e] of remoteEntities){
+      if(e.userData.role==='human') updateHumanAnim(e,Boolean(e.userData.targetMoving),dt);
+      if(e.userData.role==='clock' && e.userData.body){
+        const cm=e.userData.clockMinutes||START_MINUTES;
+        setClockHands(e.userData.body,cm);
+      }
+    }
+
+    if(state.started && state.role==='clock' && playerRig?.userData?.body) setClockHands(playerRig.userData.body,state.clockMinutes);
+    if(state.started && state.isHost) hostTick(now);
+    if(state.started && !state.isHost) guestTick(now);
+    renderer.render(scene,camera);
+    requestAnimationFrame(renderLoop);
+  }
+
+  // -------------------- NETWORK --------------------
+  function setStatus(text, good=false){statusEl.textContent=text;statusEl.style.color=good?'#8cf2b9':'#d6e7f8'}
+
+  function cleanName(name){return String(name||'').trim().replace(/[<>]/g,'').slice(0,16) || 'Player'}
+
+  function generateRoomId(){
+    const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s='clockroom-';
+    for(let i=0;i<6;i++) s+=alphabet[Math.floor(Math.random()*alphabet.length)];
+    return s;
+  }
+
+  function setupHostPeer(){
+    state.isHost=true; state.mode='host';
+    const desired=generateRoomId();
+    setStatus('ルームを作成しています…');
+    try{state.peer=new Peer(desired,{debug:1})}
+    catch(err){setStatus('PeerJSの初期化に失敗: '+err.message);return}
+    state.peer.on('open', id=>{
+      state.playerId=id; state.roomId=id;
+      state.name=cleanName(nameInput.value); nameInput.value=state.name; localStorage.setItem(STORAGE_NAME,state.name);
+      state.mapId=mapSelect.value;
+      state.roomPlayers.clear();
+      state.roomPlayers.set(id,{id,name:state.name,host:true});
+      roomArea.classList.remove('hidden'); hostControls.classList.remove('hidden'); joinArea.classList.add('hidden');
+      roomCodeText.textContent=id; setStatus('ルーム作成完了。リンクを友達に送ってください。',true);
+      renderLobbyPlayers();
+      updateRoomLink();
+    });
+    state.peer.on('connection',conn=>{
+      if(state.started){conn.on('open',()=>conn.send({type:'reject',reason:'ゲームはすでに開始しています。'}));return}
+      if(state.conns.size>=MAX_PLAYERS-1){conn.on('open',()=>conn.send({type:'reject',reason:'満員です。'}));return}
+      state.conns.set(conn.peer,conn);
+      conn.on('open',()=>{
+        conn.send({type:'welcome',roomId:state.roomId,mapId:state.mapId,players:Array.from(state.roomPlayers.values())});
+      });
+      conn.on('data',data=>onHostData(conn,data));
+      conn.on('close',()=>{state.conns.delete(conn.peer);state.roomPlayers.delete(conn.peer);state.playerStates.delete(conn.peer);broadcastLobby();renderLobbyPlayers();});
+      conn.on('error',e=>console.warn('Peer connection error',e));
+    });
+    state.peer.on('error',err=>{console.error(err);setStatus('通信エラー: '+err.type);});
+  }
+
+  function setupGuestPeer(roomId){
+    state.isHost=false; state.mode='guest'; state.roomId=roomId.trim();
+    state.name=cleanName(nameInput.value); nameInput.value=state.name; localStorage.setItem(STORAGE_NAME,state.name);
+    setStatus('ホストへ接続しています…');
+    try{state.peer=new Peer(undefined,{debug:1})}catch(err){setStatus('PeerJSの初期化に失敗: '+err.message);return}
+    state.peer.on('open',id=>{
+      state.playerId=id;
+      const conn=state.peer.connect(state.roomId,{reliable:true}); state.hostConn=conn;
+      conn.on('open',()=>{conn.send({type:'join',name:state.name}); setStatus('接続しました。ホストの開始を待っています。',true)});
+      conn.on('data',data=>onGuestData(data));
+      conn.on('close',()=>setStatus('ホストとの接続が切れました。'));
+      conn.on('error',e=>setStatus('接続エラー: '+e.message));
+    });
+    state.peer.on('error',err=>{setStatus('通信エラー: '+err.type);console.error(err)});
+  }
+
+  function onHostData(conn,data){
+    if(!data||typeof data!=='object')return;
+    if(data.type==='join'){
+      if(state.roomPlayers.size>=MAX_PLAYERS){conn.send({type:'reject',reason:'満員です。'});return}
+      const name=cleanName(data.name);
+      state.roomPlayers.set(conn.peer,{id:conn.peer,name,host:false});
+      conn.send({type:'welcome',roomId:state.roomId,mapId:state.mapId,players:Array.from(state.roomPlayers.values())});
+      broadcastLobby(); renderLobbyPlayers();
+      return;
+    }
+    if(data.type==='state' && !state.gameOver){
+      const p=state.roomPlayers.get(conn.peer); if(!p)return;
+      const old=state.playerStates.get(conn.peer)||{};
+      const x=Number.isFinite(data.x)?data.x:old.x||0, y=Number.isFinite(data.y)?data.y:old.y||1.4, z=Number.isFinite(data.z)?data.z:old.z||0;
+      const role=old.role||p.role||'human';
+      const clean={id:conn.peer,name:p.name,role,x:clamp(x,-26.4,26.4),y:role==='clock'?clamp(y,.9,17.1):1.4,z:clamp(z,-16.4,16.4),yaw:Number(data.yaw)||0,pitch:Number(data.pitch)||0,moving:Boolean(data.moving),clockSpeed:old.clockSpeed||state.clockSpeed,clockMinutes:old.clockMinutes||START_MINUTES};
+      if(role==='clock' && data.clockSpeed!=null){
+        const s=clamp(Number(data.clockSpeed)||5,.25,60);
+        if(s!==state.clockSpeed){state.clockSpeed=s;state.clockLastAt=performance.now();}
+        clean.clockSpeed=s;
+      }
+      state.playerStates.set(conn.peer,clean);
+      return;
+    }
+    if(data.type==='claim') handleClaim(conn.peer,Number(data.clockIndex));
+  }
+
+  function onGuestData(data){
+    if(!data||typeof data!=='object')return;
+    if(data.type==='reject'){setStatus(data.reason||'参加できません。');return}
+    if(data.type==='welcome'){
+      state.roomId=data.roomId||state.roomId; state.mapId=data.mapId||'museum';
+      state.roomPlayers.clear(); for(const p of data.players||[]) state.roomPlayers.set(p.id,p);
+      roomArea.classList.remove('hidden'); hostControls.classList.add('hidden'); joinArea.classList.add('hidden');
+      roomCodeText.textContent=state.roomId; renderLobbyPlayers(); updateRoomLink();
+      setStatus('ロビーに参加しました。',true); return;
+    }
+    if(data.type==='lobby'){
+      state.mapId=data.mapId||state.mapId;
+      state.roomPlayers.clear(); for(const p of data.players||[]) state.roomPlayers.set(p.id,p);
+      renderLobbyPlayers(); mapSelect.value=state.mapId;
+      return;
+    }
+    if(data.type==='start'){startGameFromNetwork(data);return}
+    if(data.type==='snapshot'){applySnapshot(data);return}
+    if(data.type==='winner'){finishGame(data.winnerId,data.reason,data.winnerName);return}
+    if(data.type==='leave'){showNotice('ホストがロビーを閉じました。');}
+  }
+
+  function broadcastLobby(){
+    const players=Array.from(state.roomPlayers.values());
+    const msg={type:'lobby',players,mapId:state.mapId};
+    for(const c of state.conns.values()) if(c.open)c.send(msg);
+  }
+
+  function sendToHost(msg){if(state.hostConn?.open)state.hostConn.send(msg)}
+
+  function startGame(){
+    if(!state.isHost || state.roomPlayers.size<2)return;
+    state.mapId=mapSelect.value;
+    const ids=Array.from(state.roomPlayers.keys());
+    const clockId=ids[Math.floor(Math.random()*ids.length)];
+    const actualIndex=Math.floor(Math.random()*99);
+    state.actualClockIndex=actualIndex;
+    state.started=true; state.gameOver=false; state.startTime=performance.now(); state.endTime=state.startTime+GAME_TIME*1000; state.remaining=GAME_TIME; state.winner=null;
+    state.clockMinutes=START_MINUTES; state.clockSpeed=clamp(Number(speedInput.value)||5,.25,60); state.clockLastAt=performance.now();
+    state.roomPlayers.forEach(p=>{p.role=p.id===clockId?'clock':'human'});
+    const spawnSet=spawnPositions(ids.length);
+    ids.forEach((id,i)=>{
+      const p=state.roomPlayers.get(id); const s=spawnSet[i];
+      state.playerStates.set(id,{id,name:p.name,role:p.role,x:s.x,y:p.role==='clock'?s.y:1.4,z:s.z,yaw:s.yaw,moving:false,clockMinutes:START_MINUTES,clockSpeed:state.clockSpeed});
+    });
+    buildWorld(state.mapId);
+    lobby.classList.add('hidden'); winnerScreen.classList.add('hidden'); hud.classList.remove('hidden');
+    applyRoleUI(); placeLocalFromHost();
+    broadcastStart();
+    showNotice('開始！ 時計を探せ！');
+  }
+
+  function broadcastStart(){
+    const players=Array.from(state.roomPlayers.values());
+    const local=state.playerStates.get(state.playerId);
+    const msg={type:'start',mapId:state.mapId,actualClockIndex:state.actualClockIndex,startTime:Date.now(),players,localState:local};
+    for(const c of state.conns.values()) if(c.open)c.send(msg);
+  }
+
+  function startGameFromNetwork(data){
+    state.started=true; state.gameOver=false; state.mode='guest'; state.mapId=data.mapId||'museum'; state.actualClockIndex=Number(data.actualClockIndex);
+    const delay=0; // Date.now values are only used for a common wall-clock reference.
+    state.startTime=performance.now(); state.endTime=state.startTime+GAME_TIME*1000; state.remaining=GAME_TIME;
+    state.roomPlayers.clear(); for(const p of data.players||[]) state.roomPlayers.set(p.id,p);
+    const mine=data.localState||state.roomPlayers.get(state.playerId); state.role=mine?.role||'human';
+    state.clockMinutes=mine?.clockMinutes||START_MINUTES; state.clockSpeed=mine?.clockSpeed||state.clockSpeed;
+    localPlayer.x=mine?.x||0; localPlayer.y=mine?.y||1.4; localPlayer.z=mine?.z||0; pointerLook.yaw=mine?.yaw||0;
+    buildWorld(state.mapId); lobby.classList.add('hidden'); winnerScreen.classList.add('hidden'); hud.classList.remove('hidden'); applyRoleUI(); placeLocalRig();
+    showNotice(delay===0?'開始！ 時計を探せ！':'');
+  }
+
+  function spawnPositions(n){
+    const spots=[
+      {x:-18,y:9,z:11,yaw:0},{x:18,y:9,z:11,yaw:0},{x:-18,y:9,z:-11,yaw:Math.PI},{x:18,y:9,z:-11,yaw:Math.PI}
+    ];
+    return spots.slice(0,n);
+  }
+
+  function placeLocalFromHost(){
+    const mine=state.playerStates.get(state.playerId); if(!mine)return;
+    state.role=mine.role; localPlayer.x=mine.x; localPlayer.y=mine.y; localPlayer.z=mine.z; pointerLook.yaw=mine.yaw||0;
+    placeLocalRig();
+  }
+
+  function applySnapshot(data){
+    if(state.isHost)return;
+    if(data.remaining!=null){state.remaining=Number(data.remaining); updateTimerUI()}
+    if(data.clockMinutes!=null){state.clockMinutes=Number(data.clockMinutes); clockReadout.textContent=formatClock(state.clockMinutes)}
+    if(data.clockSpeed!=null){state.clockSpeed=Number(data.clockSpeed); if(state.role==='clock') speedInput.value=String(state.clockSpeed)}
+    state.actualClockIndex=Number(data.actualClockIndex);
+    updateRemotePlayers(data.players||[]);
+    // Keep map visuals synchronized in case the host selected it before starting.
+    if(state.mapId!==data.mapId){state.mapId=data.mapId; buildWorld(state.mapId)}
+  }
+
+  function hostTick(now){
+    const dt=(now-state.lastHostTick)/1000; state.lastHostTick=now;
+    if(state.gameOver)return;
+    state.remaining=Math.max(0,(state.endTime-now)/1000);
+    const cp=state.playerStates.get(getClockId());
+    if(cp){
+      const elapsed=(now-state.clockLastAt)/1000;
+      if(elapsed>=state.clockSpeed){
+        const ticks=Math.floor(elapsed/state.clockSpeed);
+        state.clockMinutes=(state.clockMinutes+ticks)%1440;
+        state.clockLastAt += ticks*state.clockSpeed*1000;
+      }
+      cp.clockMinutes=state.clockMinutes; cp.clockSpeed=state.clockSpeed;
+      state.playerStates.set(cp.id,cp);
+    }
+    const mine=state.playerStates.get(state.playerId);
+    if(mine && playerRig){mine.x=localPlayer.x;mine.y=localPlayer.y;mine.z=localPlayer.z;mine.yaw=pointerLook.yaw;mine.pitch=pointerLook.pitch;mine.moving=movementActive();}
+    if(state.role==='clock' && playerRig?.userData?.body) setClockHands(playerRig.userData.body,state.clockMinutes);
+    updateTimerUI();
+    if(now-state.lastBroadcast>=75){state.lastBroadcast=now;broadcastSnapshot()}
+    if(state.remaining<=0)finishGame(getClockId(),'timeout',state.roomPlayers.get(getClockId())?.name||'時計');
+  }
+
+  function guestTick(now){
+    if(state.gameOver)return;
+    state.remaining=Math.max(0,state.remaining - Math.max(0,(now-(guestTick.last||now))/1000)); guestTick.last=now;
+    if(now-state.lastLocalSend>=65){state.lastLocalSend=now; sendLocalState();}
+    updateTimerUI();
+    clockReadout.textContent=formatClock(state.clockMinutes);
+  }
+
+  function sendLocalState(){
+    const payload={type:'state',x:localPlayer.x,y:localPlayer.y,z:localPlayer.z,yaw:pointerLook.yaw,pitch:pointerLook.pitch,moving:movementActive()};
+    if(state.role==='clock')payload.clockSpeed=clamp(Number(speedInput.value)||state.clockSpeed,.25,60);
+    sendToHost(payload);
+  }
+
+  function movementActive(){return Boolean(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD||keys.KeyQ||keys.KeyE||keys.Space)}
+
+  function broadcastSnapshot(){
+    const players=[];
+    for(const p of state.playerStates.values()) players.push({...p});
+    const msg={type:'snapshot',mapId:state.mapId,remaining:state.remaining,clockMinutes:state.clockMinutes,clockSpeed:state.clockSpeed,actualClockIndex:state.actualClockIndex,players};
+    for(const c of state.conns.values()) if(c.open)c.send(msg);
+    // Refresh host visuals for remote entities from authoritative state.
+    updateRemotePlayers(players);
+  }
+
+  function getClockId(){
+    for(const p of state.roomPlayers.values())if(p.role==='clock')return p.id;
+    for(const p of state.playerStates.values())if(p.role==='clock')return p.id;
+    return null;
+  }
+
+  function handleClaim(clickerId,index){
+    if(!state.isHost || state.gameOver || !state.started)return;
+    const clockId=getClockId();
+    if(index!==state.actualClockIndex){return}
+    if(clickerId===clockId)return;
+    const clicker=state.roomPlayers.get(clickerId); if(!clicker || clicker.role!=='human')return;
+    // The hunt only succeeds after the clock has actually drifted from 03:00.
+    if(state.clockMinutes===START_MINUTES){
+      const c=state.conns.get(clickerId); if(c?.open)c.send({type:'notice',text:'まだ03:00のままです。時間がずれるまで待とう。'});
+      return;
+    }
+    finishGame(clickerId,'found',clicker.name);
+  }
+
+  function finishGame(winnerId,reason,winnerName){
+    if(state.gameOver)return;
+    state.gameOver=true; state.started=false; state.winner={id:winnerId,reason,name:winnerName||state.roomPlayers.get(winnerId)?.name||'Player'};
+    const isClockWinner=reason==='timeout';
+    showWinner(state.winner.name,reason,isClockWinner);
+    document.exitPointerLock?.();
+    if(state.isHost){
+      const msg={type:'winner',winnerId,reason,winnerName:state.winner.name};
+      for(const c of state.conns.values()) if(c.open)c.send(msg);
+    }
+  }
+
+  function showWinner(name,reason,isClockWinner){
+    hud.classList.add('hidden'); winnerScreen.classList.remove('hidden');
+    if(isClockWinner){
+      winIcon.textContent='🕰️'; winnerTitle.textContent='時計の勝利'; winnerDesc.textContent='5分間見つからず、生き残りました。';
+    }else{
+      winIcon.textContent='🔎'; winnerTitle.textContent='鬼の勝利'; winnerDesc.textContent='ずれた時計を最初に見つけました。';
+    }
+    winnerName.textContent=name;
+  }
+
+  // -------------------- UI --------------------
+  function applyRoleUI(){
+    roleBadge.textContent=state.role==='clock'?'役職: 時計':'役職: 鬼（人間）';
+    roleBadge.classList.toggle('roleClock',state.role==='clock'); roleBadge.classList.toggle('roleHuman',state.role!=='clock');
+    clockPanel.classList.toggle('hidden',state.role!=='clock');
+    controlHint.textContent=state.role==='clock'?'WASDで移動 / Q・E・Spaceで上下 / マウスで見る':'WASDで歩く / マウスで見る / 中央に時計を合わせてクリック';
+    mapLabel.textContent=mapNames[state.mapId] || state.mapId;
+    clockReadout.textContent=formatClock(state.clockMinutes);
+    if(state.role==='clock')speedInput.value=String(state.clockSpeed);
+  }
+
+  function renderLobbyPlayers(){
+    const list=Array.from(state.roomPlayers.values());
+    playersEl.innerHTML='';
+    for(const p of list){
+      const row=document.createElement('div'); row.className='playerRow';
+      const dot=document.createElement('span'); dot.className='dot';
+      const name=document.createElement('span'); name.textContent=p.name+(p.id===state.playerId?'（自分）':'');
+      const meta=document.createElement('span'); meta.className='meta'; meta.textContent=p.host?'HOST':'READY';
+      row.append(dot,name,meta); playersEl.appendChild(row);
+    }
+    countText.textContent=`${list.length} / ${MAX_PLAYERS}`;
+    startBtn.disabled=!(state.isHost && list.length>=2 && !state.started);
+  }
+
+  function updateRoomLink(){
+    const url=new URL(location.href); url.searchParams.set('room',state.roomId); roomCodeText.title=url.href;
+  }
+
+  function showNotice(text){
+    if(!text)return;
+    noticeEl.textContent=text; noticeEl.classList.add('show'); clearTimeout(state.noticeTimer);
+    state.noticeTimer=setTimeout(()=>noticeEl.classList.remove('show'),1800);
+  }
+
+  function formatTime(seconds){
+    const s=Math.ceil(Math.max(0,seconds)); const m=Math.floor(s/60); const sec=s%60; return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  }
+  function formatClock(minutes){
+    const m=((Math.floor(minutes)%1440)+1440)%1440; const h=Math.floor(m/60); const min=m%60; return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+  }
+  function updateTimerUI(){timerValue.textContent=formatTime(state.remaining);}
+  function clamp(v,a,b){return Math.min(b,Math.max(a,v))}
+
+  hostBtn.addEventListener('click',()=>{
+    const name=cleanName(nameInput.value); nameInput.value=name; localStorage.setItem(STORAGE_NAME,name);
+    mapSelect.disabled=false;
+    hostBtn.disabled=true; joinBtn.disabled=true; joinArea.classList.add('hidden');
+    setupHostPeer();
+  });
+
+  joinBtn.addEventListener('click',()=>{
+    joinArea.classList.toggle('hidden');
+    const urlRoom=new URL(location.href).searchParams.get('room');
+    if(urlRoom && !roomInput.value) roomInput.value=urlRoom;
+    roomInput.focus();
+  });
+
+  joinConfirmBtn.addEventListener('click',()=>{
+    const room=roomInput.value.trim();
+    if(!room){setStatus('ルームコードを入力してください。');return}
+    const name=cleanName(nameInput.value); nameInput.value=name; localStorage.setItem(STORAGE_NAME,name);
+    hostBtn.disabled=true;joinBtn.disabled=true;joinConfirmBtn.disabled=true;
+    setupGuestPeer(room);
+  });
+
+  mapSelect.addEventListener('change',()=>{
+    if(!state.isHost||state.started)return;
+    state.mapId=mapSelect.value;
+    if(state.roomPlayers.size>0)broadcastLobby();
+    buildWorld(state.mapId);
+  });
+
+  startBtn.addEventListener('click',startGame);
+
+  copyBtn.addEventListener('click',async()=>{
+    if(!state.roomId)return;
+    const url=new URL(location.href); url.searchParams.set('room',state.roomId);
+    try{await navigator.clipboard.writeText(url.href);showNotice('ルームリンクをコピーしました！')}
+    catch{prompt('このリンクをコピーしてください',url.href)}
+  });
+
+  speedInput.addEventListener('change',()=>{
+    const s=clamp(Number(speedInput.value)||5,.25,60); speedInput.value=s; state.clockSpeed=s; localStorage.setItem(STORAGE_SPEED,String(s));
+    if(state.isHost && state.role==='clock'){state.clockLastAt=performance.now()}
+    if(!state.isHost && state.role==='clock')sendToHost({type:'state',x:localPlayer.x,y:localPlayer.y,z:localPlayer.z,yaw:pointerLook.yaw,pitch:pointerLook.pitch,moving:movementActive(),clockSpeed:s});
+  });
+
+  backLobbyBtn.addEventListener('click',()=>location.href=location.pathname);
+
+  // Auto-open join panel when arriving via a host-generated room link.
+  const roomFromUrl=new URL(location.href).searchParams.get('room');
+  if(roomFromUrl){joinArea.classList.remove('hidden');roomInput.value=roomFromUrl}
+
+  initThree();
+  renderLobbyPlayers();
+})();
+</script>
+</body>
+</html>
