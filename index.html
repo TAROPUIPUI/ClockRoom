@@ -186,14 +186,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
 <script>
 (() => {
   'use strict';
 
   // ============================================================
   // ClockRoom - single HTML prototype
-  // Three.js r160 + PeerJS 1.5.4
+  // Three.js r160 + PeerJS 1.5.5
   // Max 4 players / host authoritative lobby + game state
   // ============================================================
 
@@ -242,6 +242,9 @@
   const state = {
     mode: 'menu', // menu / host / guest / playing / ended
     peer: null,
+    peerReady: false,
+    guestConnectAttempt: 0,
+    guestRetryTimer: 0,
     hostConn: null,
     roomId: '',
     isHost: false,
@@ -760,51 +763,196 @@
     return s;
   }
 
+  function peerOptions(){
+    return {
+      debug: 1,
+      secure: true,
+      config: {
+        iceServers: [
+          { urls:'stun:stun.l.google.com:19302' }
+        ],
+        sdpSemantics:'unified-plan'
+      }
+    };
+  }
+
+  function destroyPeerSafely(){
+    clearTimeout(state.guestRetryTimer);
+    state.guestRetryTimer=0;
+    try{
+      if(state.peer && !state.peer.destroyed) state.peer.destroy();
+    }catch(err){ console.warn('Peer destroy error',err); }
+    state.peer=null;
+    state.peerReady=false;
+  }
+
   function setupHostPeer(){
-    state.isHost=true; state.mode='host';
-    const desired=generateRoomId();
-    setStatus('ルームを作成しています…');
-    try{state.peer=new Peer(desired,{debug:1})}
-    catch(err){setStatus('PeerJSの初期化に失敗: '+err.message);return}
-    state.peer.on('open', id=>{
-      state.playerId=id; state.roomId=id;
-      state.name=cleanName(nameInput.value); nameInput.value=state.name; localStorage.setItem(STORAGE_NAME,state.name);
+    state.isHost=true;
+    state.mode='host';
+    state.peerReady=false;
+    setStatus('PeerJSサーバーへ接続しています…');
+
+    try{
+      // IDはPeerJS側に自動生成させる。固定ルームIDの衝突を防ぐ。
+      state.peer=new Peer(undefined,peerOptions());
+    }catch(err){
+      setStatus('PeerJSの初期化に失敗: '+err.message);
+      hostBtn.disabled=false;
+      joinBtn.disabled=false;
+      return;
+    }
+
+    state.peer.on('open',id=>{
+      state.peerReady=true;
+      state.playerId=id;
+      state.roomId=id;
+      state.name=cleanName(nameInput.value);
+      nameInput.value=state.name;
+      localStorage.setItem(STORAGE_NAME,state.name);
       state.mapId=mapSelect.value;
       state.roomPlayers.clear();
       state.roomPlayers.set(id,{id,name:state.name,host:true});
-      roomArea.classList.remove('hidden'); hostControls.classList.remove('hidden'); joinArea.classList.add('hidden');
-      roomCodeText.textContent=id; setStatus('ルーム作成完了。リンクを友達に送ってください。',true);
+      roomArea.classList.remove('hidden');
+      hostControls.classList.remove('hidden');
+      joinArea.classList.add('hidden');
+      roomCodeText.textContent=id;
+      setStatus('ルーム作成完了。リンクを友達に送ってください。',true);
       renderLobbyPlayers();
       updateRoomLink();
     });
+
     state.peer.on('connection',conn=>{
-      if(state.started){conn.on('open',()=>conn.send({type:'reject',reason:'ゲームはすでに開始しています。'}));return}
-      if(state.conns.size>=MAX_PLAYERS-1){conn.on('open',()=>conn.send({type:'reject',reason:'満員です。'}));return}
+      if(state.started){
+        conn.on('open',()=>conn.send({type:'reject',reason:'ゲームはすでに開始しています。'}));
+        return;
+      }
+      if(state.conns.size>=MAX_PLAYERS-1){
+        conn.on('open',()=>conn.send({type:'reject',reason:'満員です。'}));
+        return;
+      }
+
       state.conns.set(conn.peer,conn);
+
       conn.on('open',()=>{
         conn.send({type:'welcome',roomId:state.roomId,mapId:state.mapId,players:Array.from(state.roomPlayers.values())});
       });
       conn.on('data',data=>onHostData(conn,data));
-      conn.on('close',()=>{state.conns.delete(conn.peer);state.roomPlayers.delete(conn.peer);state.playerStates.delete(conn.peer);broadcastLobby();renderLobbyPlayers();});
+      conn.on('close',()=>{
+        state.conns.delete(conn.peer);
+        state.roomPlayers.delete(conn.peer);
+        state.playerStates.delete(conn.peer);
+        broadcastLobby();
+        renderLobbyPlayers();
+      });
       conn.on('error',e=>console.warn('Peer connection error',e));
     });
-    state.peer.on('error',err=>{console.error(err);setStatus('通信エラー: '+err.type);});
+
+    state.peer.on('disconnected',()=>{
+      state.peerReady=false;
+      if(!state.gameOver) setStatus('通信サーバーとの接続が切れました。再接続しています…');
+      try{state.peer.reconnect();}catch(err){console.warn(err);}
+    });
+
+    state.peer.on('error',err=>{
+      console.error('Host PeerJS error:',err);
+      if(err.type==='peer-unavailable') return;
+      setStatus('通信エラー: '+err.type);
+    });
   }
 
-  function setupGuestPeer(roomId){
-    state.isHost=false; state.mode='guest'; state.roomId=roomId.trim();
-    state.name=cleanName(nameInput.value); nameInput.value=state.name; localStorage.setItem(STORAGE_NAME,state.name);
-    setStatus('ホストへ接続しています…');
-    try{state.peer=new Peer(undefined,{debug:1})}catch(err){setStatus('PeerJSの初期化に失敗: '+err.message);return}
-    state.peer.on('open',id=>{
-      state.playerId=id;
-      const conn=state.peer.connect(state.roomId,{reliable:true}); state.hostConn=conn;
-      conn.on('open',()=>{conn.send({type:'join',name:state.name}); setStatus('接続しました。ホストの開始を待っています。',true)});
-      conn.on('data',data=>onGuestData(data));
-      conn.on('close',()=>setStatus('ホストとの接続が切れました。'));
-      conn.on('error',e=>setStatus('接続エラー: '+e.message));
+  function scheduleGuestRetry(roomId,reason){
+    if(state.started) return;
+
+    if(state.guestConnectAttempt>=8){
+      setStatus('ホストを見つけられませんでした。ホストがルームを開いたままか確認してください。');
+      joinConfirmBtn.disabled=false;
+      hostBtn.disabled=false;
+      joinBtn.disabled=false;
+      return;
+    }
+
+    const attempt=state.guestConnectAttempt+1;
+    state.guestConnectAttempt=attempt;
+    const wait=Math.min(3500,900+attempt*250);
+    setStatus((reason||'ホストがまだ見つかりません。')+` ${Math.ceil(wait/100)/10}秒後に再接続 (${attempt}/8)…`);
+    clearTimeout(state.guestRetryTimer);
+    state.guestRetryTimer=setTimeout(()=>setupGuestPeer(roomId,true),wait);
+  }
+
+  function connectGuestPeer(roomId){
+    if(!state.peer || !state.peer.open || state.started) return;
+
+    setStatus('ホストIDを確認しています…');
+
+    const conn=state.peer.connect(roomId,{reliable:true,serialization:'json'});
+    state.hostConn=conn;
+    let opened=false;
+
+    conn.on('open',()=>{
+      opened=true;
+      state.guestConnectAttempt=0;
+      conn.send({type:'join',name:state.name});
+      setStatus('接続しました。ホストの開始を待っています。',true);
     });
-    state.peer.on('error',err=>{setStatus('通信エラー: '+err.type);console.error(err)});
+    conn.on('data',data=>onGuestData(data));
+    conn.on('close',()=>{
+      if(!state.started && !state.gameOver){
+        state.hostConn=null;
+        scheduleGuestRetry(roomId,opened?'ホストとの接続が切れました。':'ホストがまだ応答していません。');
+      }else{
+        setStatus('ホストとの接続が切れました。');
+      }
+    });
+    conn.on('error',e=>console.warn('Guest connection error:',e));
+  }
+
+  function setupGuestPeer(roomId,isRetry=false){
+    state.isHost=false;
+    state.mode='guest';
+    state.roomId=roomId.trim();
+    state.name=cleanName(nameInput.value);
+    nameInput.value=state.name;
+    localStorage.setItem(STORAGE_NAME,state.name);
+    clearTimeout(state.guestRetryTimer);
+    state.guestRetryTimer=0;
+    if(!isRetry) state.guestConnectAttempt=0;
+
+    setStatus(isRetry?'ホストへ再接続しています…':'PeerJSサーバーへ接続しています…');
+    destroyPeerSafely();
+
+    try{
+      state.peer=new Peer(undefined,peerOptions());
+    }catch(err){
+      scheduleGuestRetry(state.roomId,'PeerJSの初期化に失敗しました。');
+      return;
+    }
+
+    state.peer.on('open',id=>{
+      state.peerReady=true;
+      state.playerId=id;
+      connectGuestPeer(state.roomId);
+    });
+
+    state.peer.on('disconnected',()=>{
+      state.peerReady=false;
+      if(!state.started) scheduleGuestRetry(state.roomId,'通信サーバーから切断されました。');
+    });
+
+    state.peer.on('error',err=>{
+      console.error('Guest PeerJS error:',err);
+      if(err.type==='peer-unavailable'){
+        scheduleGuestRetry(state.roomId,'ホストIDがまだPeerJSに見つかりません。');
+        return;
+      }
+      if(err.type==='network' || err.type==='server-error' || err.type==='socket-error'){
+        scheduleGuestRetry(state.roomId,'PeerJSサーバーへ接続できません。');
+        return;
+      }
+      setStatus('通信エラー: '+err.type);
+      joinConfirmBtn.disabled=false;
+      hostBtn.disabled=false;
+      joinBtn.disabled=false;
+    });
   }
 
   function onHostData(conn,data){
@@ -1097,6 +1245,10 @@
   copyBtn.addEventListener('click',async()=>{
     if(!state.roomId)return;
     const url=new URL(location.href); url.searchParams.set('room',state.roomId);
+    if(location.protocol==='file:'){
+      prompt('このHTMLをWeb公開してから、このURLを友達に送ってください。現在はローカルファイルです。',url.href);
+      return;
+    }
     try{await navigator.clipboard.writeText(url.href);showNotice('ルームリンクをコピーしました！')}
     catch{prompt('このリンクをコピーしてください',url.href)}
   });
