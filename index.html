@@ -83,6 +83,19 @@
   .winCard h2{font-size:36px;margin:0 0 8px}
   .winCard p{margin:0;color:var(--muted);line-height:1.6}
   .winnerName{font-size:22px;font-weight:900;color:var(--cyan);margin:14px 0}
+
+  #mobileControls{position:fixed;inset:0;z-index:12;pointer-events:none;user-select:none;-webkit-user-select:none;touch-action:none}
+  .mobileStick{position:absolute;width:138px;height:138px;border-radius:50%;background:rgba(8,16,24,.48);border:1px solid rgba(190,225,255,.22);box-shadow:0 12px 34px rgba(0,0,0,.24),inset 0 0 30px rgba(120,220,255,.05);pointer-events:auto;touch-action:none}
+  .mobileStick.left{left:18px;bottom:28px}
+  .mobileStick.right{right:18px;bottom:28px}
+  .mobileKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin-left:-29px;margin-top:-29px;border-radius:50%;background:linear-gradient(145deg,rgba(150,236,255,.88),rgba(73,170,205,.72));border:1px solid rgba(255,255,255,.28);box-shadow:0 8px 24px rgba(0,0,0,.26);transform:translate3d(0,0,0)}
+  .mobileButton{position:absolute;pointer-events:auto;width:76px;height:76px;border-radius:50%;border:1px solid rgba(255,255,255,.2);color:#fff;font-weight:900;background:rgba(8,16,24,.82);box-shadow:0 12px 30px rgba(0,0,0,.25);touch-action:none}
+  #attackBtn{right:176px;bottom:46px;width:92px;height:92px;background:linear-gradient(145deg,rgba(255,134,101,.96),rgba(205,64,57,.92))}
+  #clockUpBtn{right:112px;bottom:168px}
+  #clockDownBtn{right:18px;bottom:168px}
+  .mobileLabel{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;padding:5px 9px;border-radius:8px;background:rgba(5,11,17,.58);color:rgba(255,255,255,.7);font-size:10px;letter-spacing:.04em;pointer-events:none}
+  @media (pointer:coarse), (max-width:760px){#mobileControls.mobileActive{display:block!important}#game{touch-action:none}.infoPanel{font-size:11px}.clockPanel{width:205px}}
+
   @media(max-width:760px){.grid{grid-template-columns:1fr}.card{padding:21px}.hudTop{top:10px}.infoPanel{left:10px;top:92px;max-width:220px}.clockPanel{right:10px;top:92px;width:220px}.timer{min-width:140px}.roleBadge{display:none}}
 </style>
 </head>
@@ -170,6 +183,22 @@
   </div>
   <div id="crosshair"></div>
   <div id="notice"></div>
+
+  <div id="mobileControls" class="hidden">
+    <div id="moveStick" class="mobileStick left">
+      <div id="moveKnob" class="mobileKnob"></div>
+      <div class="mobileLabel">移動</div>
+    </div>
+
+    <div id="lookStick" class="mobileStick right">
+      <div id="lookKnob" class="mobileKnob"></div>
+      <div class="mobileLabel">視点</div>
+    </div>
+
+    <button id="attackBtn" class="mobileButton hidden">時計<br>を倒す</button>
+    <button id="clockUpBtn" class="mobileButton hidden">▲</button>
+    <button id="clockDownBtn" class="mobileButton hidden">▼</button>
+  </div>
 </div>
 
 <div id="winner" class="screen hidden">
@@ -235,6 +264,14 @@
   const winnerName = document.getElementById('winnerName');
   const winnerDesc = document.getElementById('winnerDesc');
   const backLobbyBtn = document.getElementById('backLobbyBtn');
+  const mobileControls = document.getElementById('mobileControls');
+  const moveStick = document.getElementById('moveStick');
+  const moveKnob = document.getElementById('moveKnob');
+  const lookStick = document.getElementById('lookStick');
+  const lookKnob = document.getElementById('lookKnob');
+  const attackBtn = document.getElementById('attackBtn');
+  const clockUpBtn = document.getElementById('clockUpBtn');
+  const clockDownBtn = document.getElementById('clockDownBtn');
 
   nameInput.value = localStorage.getItem(STORAGE_NAME) || '';
   speedInput.value = localStorage.getItem(STORAGE_SPEED) || '5';
@@ -282,6 +319,9 @@
   let keys = Object.create(null);
   let mouse = { locked:false };
   let pointerLook = { yaw:0, pitch:0 };
+  const mobileInput = { moveX:0, moveY:0, lookX:0, lookY:0, clockVertical:0 };
+  const mobilePointers = { move:null, look:null };
+  const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || Boolean(window.matchMedia?.('(pointer:coarse)').matches);
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2(0,0);
   const tmpVec = new THREE.Vector3();
@@ -328,6 +368,7 @@
     document.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('click', onCanvasClick);
     document.addEventListener('pointerlockchange', () => { mouse.locked = document.pointerLockElement === canvas; });
+    setupMobileControls();
 
     buildWorld('museum');
     requestAnimationFrame(renderLoop);
@@ -517,14 +558,9 @@
       setClockHands(c,START_MINUTES);
       worldRoot.add(c); clockEntities.push(c);
     }
-    if(state.actualClockIndex>=0 && state.actualClockIndex<clockEntities.length){
-      const actual=clockEntities[state.actualClockIndex];
-      actual.userData.isActual=true;
-      // The moving player-clock occupies this slot; hide the old static decoy.
-      actual.visible=false;
-      actual.children.forEach(ch=>{ if(ch.material) ch.material = ch.material.clone(); });
-      if(actual.children[1] && actual.children[1].material) actual.children[1].material.emissive.setHex(0x6a4012);
-    }
+    // 本物は移動する時計プレイヤーとして表示する。
+    // 99個の静止時計を全員に同じように見せ、近くに本物が来たときだけ
+    // クライアント側の距離判定で重複を視覚的に隠す。
     addMapSigns(mapId);
   }
 
@@ -548,15 +584,28 @@
 
   function createClockPlayerRig(player, local){
     const group=new THREE.Group();
-    const c=createClockMesh({dynamic:true,index:state.actualClockIndex});
-    c.scale.setScalar(1.08); group.add(c);
-    const aura=new THREE.Mesh(new THREE.TorusGeometry(1.45,.045,12,48),new THREE.MeshBasicMaterial({color:0xffc75a,transparent:true,opacity:.55}));
-    aura.rotation.x=Math.PI/2; aura.position.z=.05; c.add(aura);
+    const c=createClockMesh({dynamic:true,index:-1});
+    c.scale.setScalar(1.12);
+    group.add(c);
+
+    const aura=new THREE.Mesh(
+      new THREE.TorusGeometry(1.45,.045,12,48),
+      new THREE.MeshBasicMaterial({color:0xffc75a,transparent:true,opacity:.52})
+    );
+    aura.rotation.x=Math.PI/2;
+    aura.position.z=.05;
+    c.add(aura);
+
     const label=makeNameLabel(player.name,0xffd77d);
-    label.position.set(0,2.0,0); group.add(label);
+    label.position.set(0,2.0,0);
+    group.add(label);
     worldRoot.add(group);
-    group.userData.body=c; group.userData.aura=aura; group.userData.label=label; group.userData.anim=0;
-    group.userData.clockIndex=state.actualClockIndex;
+
+    group.userData.body=c;
+    group.userData.aura=aura;
+    group.userData.label=label;
+    group.userData.isPlayerClock=true;
+    group.userData.playerId=player.id;
     return group;
   }
 
@@ -617,138 +666,357 @@
   function placeLocalRig(){
     if(!state.role) return;
     if(playerRig) worldRoot.remove(playerRig);
-    const p={id:state.playerId,name:state.name,role:state.role};
-    playerRig=createPlayerRig(p,true);
-    playerRig.position.set(localPlayer.x,0,localPlayer.z);
-    if(state.role==='clock') playerRig.position.y=localPlayer.y;
-    state.playerStates.set(state.playerId,{id:state.playerId,name:state.name,role:state.role,x:localPlayer.x,y:localPlayer.y,z:localPlayer.z,yaw:localPlayer.yaw,pitch:localPlayer.pitch,clockMinutes:state.clockMinutes});
+
+    if(state.role==='clock'){
+      const p={id:state.playerId,name:state.name,role:state.role};
+      playerRig=createPlayerRig(p,true);
+      playerRig.position.set(localPlayer.x,localPlayer.y,localPlayer.z);
+      applyClockSurfaceOrientation(playerRig,new THREE.Vector3(localPlayer.x,localPlayer.y,localPlayer.z));
+    }else{
+      // 鬼側は一人称なので、自分の3D人間モデルは表示しない。
+      playerRig=null;
+    }
+
+    state.playerStates.set(state.playerId,{
+      id:state.playerId,name:state.name,role:state.role,
+      x:localPlayer.x,y:localPlayer.y,z:localPlayer.z,
+      yaw:localPlayer.yaw,pitch:localPlayer.pitch,
+      clockMinutes:state.clockMinutes,clockSpeed:state.clockSpeed
+    });
   }
 
   function updateRemotePlayers(snapshot){
     const seen=new Set();
-    for(const p of snapshot.players||[]){
+    const players=snapshot.players||[];
+
+    for(const p of players){
       if(p.id===state.playerId) continue;
       seen.add(p.id);
+
       let entity=remoteEntities.get(p.id);
       if(!entity || entity.userData.role!==p.role){
         if(entity) worldRoot.remove(entity);
-        entity=createPlayerRig(p,false); entity.userData.role=p.role; remoteEntities.set(p.id,entity);
+        entity=createPlayerRig(p,false);
+        entity.userData.role=p.role;
+        entity.userData.playerId=p.id;
+        remoteEntities.set(p.id,entity);
       }
-      entity.position.lerp(new THREE.Vector3(p.x,p.role==='clock'?p.y:0,p.z),.55);
-      entity.rotation.y=p.yaw||0;
+
+      const targetPos=new THREE.Vector3(
+        Number(p.x)||0,
+        p.role==='clock' ? (Number(p.y)||1.4) : 0,
+        Number(p.z)||0
+      );
+
+      entity.position.lerp(targetPos,.55);
+      entity.rotation.y=Number(p.yaw)||0;
       entity.userData.targetMoving=Boolean(p.moving);
-      entity.userData.clockMinutes=p.clockMinutes||START_MINUTES;
-      if(p.role==='clock' && entity.userData.body) setClockHands(entity.userData.body,entity.userData.clockMinutes||START_MINUTES);
+      entity.userData.clockMinutes=Number(p.clockMinutes)||START_MINUTES;
+
+      if(p.role==='clock' && entity.userData.body){
+        setClockHands(entity.userData.body,entity.userData.clockMinutes);
+        applyClockSurfaceOrientation(entity,targetPos);
+      }
     }
+
     for(const [id,entity] of remoteEntities){
-      if(!seen.has(id)){worldRoot.remove(entity);remoteEntities.delete(id)}
+      if(!seen.has(id)){
+        worldRoot.remove(entity);
+        remoteEntities.delete(id);
+      }
     }
+
+    updateDecoyVisibility();
+  }
+
+  function getNearestSurfaceNormal(pos){
+    const dFloor=Math.abs(pos.y-1.1);
+    const dCeil=Math.abs(17.1-pos.y);
+    const dLeft=Math.abs(pos.x-(-27.2));
+    const dRight=Math.abs(27.2-pos.x);
+    const dBack=Math.abs(pos.z-(-17.2));
+    const dFront=Math.abs(17.2-pos.z);
+    let best=dFloor;
+    let normal=new THREE.Vector3(0,1,0);
+    if(dCeil<best){best=dCeil;normal.set(0,-1,0)}
+    if(dLeft<best){best=dLeft;normal.set(1,0,0)}
+    if(dRight<best){best=dRight;normal.set(-1,0,0)}
+    if(dBack<best){best=dBack;normal.set(0,0,1)}
+    if(dFront<best){normal.set(0,0,-1)}
+    return normal;
+  }
+
+  function applyClockSurfaceOrientation(entity,pos){
+    if(!entity) return;
+    const normal=getNearestSurfaceNormal(pos);
+    tmpQuat.setFromUnitVectors(new THREE.Vector3(0,0,1),normal);
+    entity.quaternion.slerp(tmpQuat,.78);
+  }
+
+  function updateDecoyVisibility(){
+    const clockPlayers=[];
+    if(state.role==='clock') clockPlayers.push({x:localPlayer.x,y:localPlayer.y,z:localPlayer.z});
+    for(const entity of remoteEntities.values()){
+      if(entity.userData.role==='clock') clockPlayers.push({x:entity.position.x,y:entity.position.y,z:entity.position.z});
+    }
+
+    for(const c of clockEntities){
+      let hidden=false;
+      for(const p of clockPlayers){
+        const dx=c.position.x-p.x;
+        const dy=c.position.y-p.y;
+        const dz=c.position.z-p.z;
+        if(dx*dx+dy*dy+dz*dz < 3.0*3.0){hidden=true;break}
+      }
+      c.visible=!hidden;
+    }
+  }
+
+  function updateLookFromMobile(dt){
+    if(!isTouchDevice || !state.started) return;
+    pointerLook.yaw -= mobileInput.lookX*2.8*dt;
+    pointerLook.pitch += mobileInput.lookY*2.25*dt;
+    pointerLook.pitch=clamp(pointerLook.pitch,-1.18,1.18);
+  }
+
+  function getMoveInput(){
+    let x=mobileInput.moveX;
+    let y=mobileInput.moveY;
+    if(keys.KeyW) y+=1;
+    if(keys.KeyS) y-=1;
+    if(keys.KeyA) x-=1;
+    if(keys.KeyD) x+=1;
+    const len=Math.hypot(x,y);
+    if(len>1){x/=len;y/=len}
+    return {x,y};
   }
 
   function updateCamera(dt){
     if(!state.started) return;
-    const forward=new THREE.Vector3(Math.sin(pointerLook.yaw),0,Math.cos(pointerLook.yaw));
-    const target=new THREE.Vector3(localPlayer.x, localPlayer.y + (state.role==='clock'?0:2.1), localPlayer.z);
-    const distance=state.role==='clock'?6.3:6.6;
-    const height=state.role==='clock'?1.9:2.25;
-    const camPos=new THREE.Vector3(
-      localPlayer.x - forward.x*distance,
-      target.y + height,
-      localPlayer.z - forward.z*distance
+
+    updateLookFromMobile(dt);
+
+    if(state.role==='human'){
+      // 鬼側は一人称。カメラ自身が「目」になる。
+      camera.position.set(localPlayer.x,1.64,localPlayer.z);
+      camera.rotation.order='YXZ';
+      camera.rotation.y=pointerLook.yaw;
+      camera.rotation.x=-pointerLook.pitch;
+      camera.rotation.z=0;
+      return;
+    }
+
+    // 時計側は「自分が時計」であることが見える三人称視点。
+    const target=new THREE.Vector3(localPlayer.x,localPlayer.y,localPlayer.z);
+    const cp=Math.cos(pointerLook.pitch);
+    const lookDir=new THREE.Vector3(
+      Math.sin(pointerLook.yaw)*cp,
+      Math.sin(pointerLook.pitch),
+      -Math.cos(pointerLook.yaw)*cp
     );
+    const camPos=target.clone().sub(lookDir.multiplyScalar(5.8));
     camera.position.lerp(camPos,1-Math.pow(.001,dt));
-    const look=new THREE.Vector3(localPlayer.x + forward.x*1.5, target.y + (state.role==='clock'?0.1:-.1), localPlayer.z + forward.z*1.5);
-    camera.lookAt(look);
+    camera.lookAt(target);
   }
 
   function updateLocalMovement(dt){
     if(!state.started || state.gameOver) return;
-    let ix=0, iz=0, iy=0;
-    if(keys.KeyW) iz-=1;
-    if(keys.KeyS) iz+=1;
-    if(keys.KeyA) ix-=1;
-    if(keys.KeyD) ix+=1;
+
+    const input=getMoveInput();
+    const sin=Math.sin(pointerLook.yaw);
+    const cos=Math.cos(pointerLook.yaw);
+    const forwardX=sin;
+    const forwardZ=-cos;
+    const rightX=cos;
+    const rightZ=sin;
+
     if(state.role==='clock'){
-      if(keys.KeyQ) iy+=1;
-      if(keys.KeyE) iy-=1;
-      if(keys.Space) iy+=1;
-      if(ix||iz||iy){
-        const len=Math.hypot(ix,iz,iy)||1; ix/=len;iz/=len;iy/=len;
-        const s=10.0;
-        const sin=Math.sin(pointerLook.yaw), cos=Math.cos(pointerLook.yaw);
-        localPlayer.x += (ix*cos + iz*sin)*s*dt;
-        localPlayer.z += (iz*cos - ix*sin)*s*dt;
-        localPlayer.y += iy*s*dt;
-        localPlayer.x=Math.max(-26.4,Math.min(26.4,localPlayer.x));
-        localPlayer.z=Math.max(-16.4,Math.min(16.4,localPlayer.z));
-        localPlayer.y=Math.max(.9,Math.min(17.1,localPlayer.y));
+      let vertical=mobileInput.clockVertical;
+      if(keys.KeyQ || keys.Space) vertical+=1;
+      if(keys.KeyE) vertical-=1;
+      vertical=clamp(vertical,-1,1);
+
+      const len=Math.hypot(input.x,input.y,vertical);
+      const nx=len>1?input.x/len:input.x;
+      const ny=len>1?input.y/len:input.y;
+      const nz=len>1?vertical/len:vertical;
+      const speed=8.7;
+
+      localPlayer.x += (rightX*nx + forwardX*ny)*speed*dt;
+      localPlayer.z += (rightZ*nx + forwardZ*ny)*speed*dt;
+      localPlayer.y += nz*speed*dt;
+
+      localPlayer.x=clamp(localPlayer.x,-27.2,27.2);
+      localPlayer.z=clamp(localPlayer.z,-17.2,17.2);
+      localPlayer.y=clamp(localPlayer.y,1.1,17.1);
+
+      if(playerRig){
+        playerRig.position.set(localPlayer.x,localPlayer.y,localPlayer.z);
+        applyClockSurfaceOrientation(playerRig,new THREE.Vector3(localPlayer.x,localPlayer.y,localPlayer.z));
       }
-      if(playerRig){playerRig.position.set(localPlayer.x,localPlayer.y,localPlayer.z); playerRig.rotation.y=pointerLook.yaw;}
     }else{
-      if(ix||iz){
-        const len=Math.hypot(ix,iz)||1; ix/=len; iz/=len;
-        const s=7.4;
-        const sin=Math.sin(pointerLook.yaw), cos=Math.cos(pointerLook.yaw);
-        localPlayer.x += (ix*cos + iz*sin)*s*dt;
-        localPlayer.z += (iz*cos - ix*sin)*s*dt;
-        localPlayer.x=Math.max(-25.3,Math.min(25.3,localPlayer.x));
-        localPlayer.z=Math.max(-15.3,Math.min(15.3,localPlayer.z));
-      }
+      // W = 前、S = 後ろ。カメラの -Z が前方向なのでここを明示的に固定。
+      const speed=7.2;
+      localPlayer.x += (rightX*input.x + forwardX*input.y)*speed*dt;
+      localPlayer.z += (rightZ*input.x + forwardZ*input.y)*speed*dt;
+      localPlayer.x=clamp(localPlayer.x,-25.2,25.2);
+      localPlayer.z=clamp(localPlayer.z,-15.2,15.2);
       localPlayer.y=1.4;
-      if(playerRig){playerRig.position.set(localPlayer.x,0,localPlayer.z); playerRig.rotation.y=pointerLook.yaw; updateHumanAnim(playerRig,Boolean(ix||iz),dt);}
     }
   }
 
   function onMouseMove(e){
-    if(!mouse.locked) return;
+    if(!mouse.locked || isTouchDevice) return;
     const sens=.0022;
     pointerLook.yaw -= e.movementX*sens;
     pointerLook.pitch -= e.movementY*sens;
-    pointerLook.pitch=Math.max(-.35,Math.min(.25,pointerLook.pitch));
+    pointerLook.pitch=clamp(pointerLook.pitch,-1.18,1.18);
   }
 
-  function onCanvasClick(){
-    if(!state.started || state.gameOver) return;
-    if(!mouse.locked){ canvas.requestPointerLock?.(); return; }
-    if(state.role!=='human') return;
+  function attemptClockAttack(){
+    if(!state.started || state.gameOver || state.role!=='human') return;
+
     raycaster.setFromCamera(ndc,camera);
     const clickable=[];
-    for(const c of clockEntities){ if(c.visible) clickable.push(c); }
+    for(const c of clockEntities){if(c.visible) clickable.push(c)}
     for(const e of remoteEntities.values()){
       if(e.userData.role==='clock' && e.userData.body) clickable.push(e.userData.body);
     }
+
     const hits=raycaster.intersectObjects(clickable,true);
-    if(!hits.length) return;
-    let obj=hits[0].object;
-    while(obj && !Object.prototype.hasOwnProperty.call(obj.userData,'clockIndex')) obj=obj.parent;
-    if(!obj) return;
-    const idx=obj.userData.clockIndex;
-    if(idx===state.actualClockIndex){
-      sendToHost({type:'claim', clockIndex:idx});
+    if(!hits.length){showNotice('時計を画面中央に合わせてね');return}
+
+    let root=hits[0].object;
+    let clockPlayerId=null;
+    let hasPlayerClock=false;
+    while(root){
+      if(root.userData?.isPlayerClock){
+        hasPlayerClock=true;
+        clockPlayerId=root.userData.playerId||null;
+        break;
+      }
+      root=root.parent;
+    }
+
+    if(hasPlayerClock && clockPlayerId){
+      sendToHost({type:'claim',targetId:clockPlayerId});
       showNotice('その時計だ！ 判定中…');
     }else{
       showNotice('違う時計だ！');
     }
   }
 
+  function onCanvasClick(){
+    if(!state.started || state.gameOver) return;
+    if(isTouchDevice) return;
+    if(!mouse.locked){canvas.requestPointerLock?.();return}
+    attemptClockAttack();
+  }
+
   function renderLoop(now){
-    const dt=Math.min(.05,(now-(renderLoop.last||now))/1000); renderLoop.last=now;
+    const dt=Math.min(.05,(now-(renderLoop.last||now))/1000);
+    renderLoop.last=now;
+
     updateLocalMovement(dt);
     updateCamera(dt);
 
     for(const [id,e] of remoteEntities){
       if(e.userData.role==='human') updateHumanAnim(e,Boolean(e.userData.targetMoving),dt);
       if(e.userData.role==='clock' && e.userData.body){
-        const cm=e.userData.clockMinutes||START_MINUTES;
-        setClockHands(e.userData.body,cm);
+        setClockHands(e.userData.body,e.userData.clockMinutes||START_MINUTES);
+        applyClockSurfaceOrientation(e,e.position);
       }
     }
 
-    if(state.started && state.role==='clock' && playerRig?.userData?.body) setClockHands(playerRig.userData.body,state.clockMinutes);
+    if(state.started && state.role==='clock' && playerRig?.userData?.body){
+      setClockHands(playerRig.userData.body,state.clockMinutes);
+      applyClockSurfaceOrientation(playerRig,new THREE.Vector3(localPlayer.x,localPlayer.y,localPlayer.z));
+    }
+
+    updateDecoyVisibility();
     if(state.started && state.isHost) hostTick(now);
     if(state.started && !state.isHost) guestTick(now);
+
     renderer.render(scene,camera);
     requestAnimationFrame(renderLoop);
+  }
+
+  function setMobileVisibility(){
+    const active=state.started && isTouchDevice;
+    mobileControls.classList.toggle('hidden',!active);
+    mobileControls.classList.toggle('mobileActive',active);
+    attackBtn.classList.toggle('hidden',!(active && state.role==='human'));
+    clockUpBtn.classList.toggle('hidden',!(active && state.role==='clock'));
+    clockDownBtn.classList.toggle('hidden',!(active && state.role==='clock'));
+  }
+
+  function resetStick(kind){
+    if(kind==='move'){
+      mobilePointers.move=null;mobileInput.moveX=0;mobileInput.moveY=0;moveKnob.style.transform='translate3d(0,0,0)';
+    }else{
+      mobilePointers.look=null;mobileInput.lookX=0;mobileInput.lookY=0;lookKnob.style.transform='translate3d(0,0,0)';
+    }
+  }
+
+  function updateStick(kind,clientX,clientY){
+    const stick=kind==='move'?moveStick:lookStick;
+    const knob=kind==='move'?moveKnob:lookKnob;
+    const rect=stick.getBoundingClientRect();
+    const cx=rect.left+rect.width/2;
+    const cy=rect.top+rect.height/2;
+    const max=(rect.width/2)-29;
+    let dx=clientX-cx;
+    let dy=clientY-cy;
+    const dist=Math.hypot(dx,dy)||1;
+    if(dist>max){dx=dx/dist*max;dy=dy/dist*max}
+    const nx=dx/max;
+    const ny=-dy/max;
+    if(kind==='move'){mobileInput.moveX=nx;mobileInput.moveY=ny}
+    else{mobileInput.lookX=nx;mobileInput.lookY=ny}
+    knob.style.transform=`translate3d(${dx}px,${dy}px,0)`;
+  }
+
+  function bindStick(stick,kind){
+    stick.addEventListener('pointerdown',e=>{
+      if(!state.started || e.pointerType!=='touch') return;
+      mobilePointers[kind]=e.pointerId;
+      stick.setPointerCapture?.(e.pointerId);
+      updateStick(kind,e.clientX,e.clientY);
+      e.preventDefault();
+    });
+    stick.addEventListener('pointermove',e=>{
+      if(mobilePointers[kind]!==e.pointerId) return;
+      updateStick(kind,e.clientX,e.clientY);e.preventDefault();
+    });
+    const end=e=>{if(mobilePointers[kind]!==e.pointerId)return;resetStick(kind);e.preventDefault()};
+    stick.addEventListener('pointerup',end);
+    stick.addEventListener('pointercancel',end);
+    stick.addEventListener('lostpointercapture',()=>resetStick(kind));
+  }
+
+  function bindHoldButton(button,direction){
+    button.addEventListener('pointerdown',e=>{
+      if(!state.started || state.role!=='clock' || e.pointerType!=='touch') return;
+      mobileInput.clockVertical=direction;
+      button.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+    });
+    const end=e=>{mobileInput.clockVertical=0;e.preventDefault()};
+    button.addEventListener('pointerup',end);
+    button.addEventListener('pointercancel',end);
+    button.addEventListener('lostpointercapture',()=>{mobileInput.clockVertical=0});
+  }
+
+  function setupMobileControls(){
+    bindStick(moveStick,'move');
+    bindStick(lookStick,'look');
+    bindHoldButton(clockUpBtn,1);
+    bindHoldButton(clockDownBtn,-1);
+    attackBtn.addEventListener('pointerdown',e=>{
+      if(!state.started || state.role!=='human' || e.pointerType!=='touch') return;
+      attemptClockAttack();e.preventDefault();
+    });
+    window.addEventListener('blur',()=>{resetStick('move');resetStick('look');mobileInput.clockVertical=0});
   }
 
   // -------------------- NETWORK --------------------
@@ -979,7 +1247,7 @@
       state.playerStates.set(conn.peer,clean);
       return;
     }
-    if(data.type==='claim') handleClaim(conn.peer,Number(data.clockIndex));
+    if(data.type==='claim') handleClaim(conn.peer,String(data.targetId||''));
   }
 
   function onGuestData(data){
@@ -1023,13 +1291,30 @@
     state.clockMinutes=START_MINUTES; state.clockSpeed=clamp(Number(speedInput.value)||5,.25,60); state.clockLastAt=performance.now();
     state.roomPlayers.forEach(p=>{p.role=p.id===clockId?'clock':'human'});
     const spawnSet=spawnPositions(ids.length);
+    const placements=clockPlacements(state.mapId);
     ids.forEach((id,i)=>{
-      const p=state.roomPlayers.get(id); const s=spawnSet[i];
-      state.playerStates.set(id,{id,name:p.name,role:p.role,x:s.x,y:p.role==='clock'?s.y:1.4,z:s.z,yaw:s.yaw,moving:false,clockMinutes:START_MINUTES,clockSpeed:state.clockSpeed});
+      const p=state.roomPlayers.get(id);
+      const sp=spawnSet[i];
+      if(p.role==='clock'){
+        const cp=placements[state.actualClockIndex] || placements[0];
+        state.playerStates.set(id,{
+          id,name:p.name,role:p.role,
+          x:cp.pos.x,y:cp.pos.y,z:cp.pos.z,
+          yaw:0,pitch:0,moving:false,
+          clockMinutes:START_MINUTES,clockSpeed:state.clockSpeed
+        });
+      }else{
+        state.playerStates.set(id,{
+          id,name:p.name,role:p.role,
+          x:sp.x,y:1.4,z:sp.z,
+          yaw:sp.yaw,pitch:0,moving:false,
+          clockMinutes:START_MINUTES,clockSpeed:state.clockSpeed
+        });
+      }
     });
     buildWorld(state.mapId);
     lobby.classList.add('hidden'); winnerScreen.classList.add('hidden'); hud.classList.remove('hidden');
-    applyRoleUI(); placeLocalFromHost();
+    applyRoleUI(); setMobileVisibility(); placeLocalFromHost();
     broadcastStart();
     showNotice('開始！ 時計を探せ！');
   }
@@ -1037,19 +1322,19 @@
   function broadcastStart(){
     const players=Array.from(state.roomPlayers.values());
     const local=state.playerStates.get(state.playerId);
-    const msg={type:'start',mapId:state.mapId,actualClockIndex:state.actualClockIndex,startTime:Date.now(),players,localState:local};
+    const msg={type:'start',mapId:state.mapId,startTime:Date.now(),players,localState:local};
     for(const c of state.conns.values()) if(c.open)c.send(msg);
   }
 
   function startGameFromNetwork(data){
-    state.started=true; state.gameOver=false; state.mode='guest'; state.mapId=data.mapId||'museum'; state.actualClockIndex=Number(data.actualClockIndex);
+    state.started=true; state.gameOver=false; state.mode='guest'; state.mapId=data.mapId||'museum'; state.actualClockIndex=-1;
     const delay=0; // Date.now values are only used for a common wall-clock reference.
-    state.startTime=performance.now(); state.endTime=state.startTime+GAME_TIME*1000; state.remaining=GAME_TIME;
+    state.startTime=performance.now(); state.endTime=state.startTime+GAME_TIME*1000; state.remaining=GAME_TIME; guestTick.last=performance.now();
     state.roomPlayers.clear(); for(const p of data.players||[]) state.roomPlayers.set(p.id,p);
     const mine=data.localState||state.roomPlayers.get(state.playerId); state.role=mine?.role||'human';
     state.clockMinutes=mine?.clockMinutes||START_MINUTES; state.clockSpeed=mine?.clockSpeed||state.clockSpeed;
-    localPlayer.x=mine?.x||0; localPlayer.y=mine?.y||1.4; localPlayer.z=mine?.z||0; pointerLook.yaw=mine?.yaw||0;
-    buildWorld(state.mapId); lobby.classList.add('hidden'); winnerScreen.classList.add('hidden'); hud.classList.remove('hidden'); applyRoleUI(); placeLocalRig();
+    localPlayer.x=mine?.x||0; localPlayer.y=mine?.y||1.4; localPlayer.z=mine?.z||0; pointerLook.yaw=mine?.yaw||0; pointerLook.pitch=mine?.pitch||0;
+    buildWorld(state.mapId); lobby.classList.add('hidden'); winnerScreen.classList.add('hidden'); hud.classList.remove('hidden'); applyRoleUI(); setMobileVisibility(); placeLocalRig();
     showNotice(delay===0?'開始！ 時計を探せ！':'');
   }
 
@@ -1071,8 +1356,7 @@
     if(data.remaining!=null){state.remaining=Number(data.remaining); updateTimerUI()}
     if(data.clockMinutes!=null){state.clockMinutes=Number(data.clockMinutes); clockReadout.textContent=formatClock(state.clockMinutes)}
     if(data.clockSpeed!=null){state.clockSpeed=Number(data.clockSpeed); if(state.role==='clock') speedInput.value=String(state.clockSpeed)}
-    state.actualClockIndex=Number(data.actualClockIndex);
-    updateRemotePlayers(data.players||[]);
+    updateRemotePlayers(data);
     // Keep map visuals synchronized in case the host selected it before starting.
     if(state.mapId!==data.mapId){state.mapId=data.mapId; buildWorld(state.mapId)}
   }
@@ -1093,7 +1377,11 @@
       state.playerStates.set(cp.id,cp);
     }
     const mine=state.playerStates.get(state.playerId);
-    if(mine && playerRig){mine.x=localPlayer.x;mine.y=localPlayer.y;mine.z=localPlayer.z;mine.yaw=pointerLook.yaw;mine.pitch=pointerLook.pitch;mine.moving=movementActive();}
+    if(mine){
+      mine.x=localPlayer.x;mine.y=localPlayer.y;mine.z=localPlayer.z;
+      mine.yaw=pointerLook.yaw;mine.pitch=pointerLook.pitch;mine.moving=movementActive();
+      if(state.role==='clock') mine.clockSpeed=state.clockSpeed;
+    }
     if(state.role==='clock' && playerRig?.userData?.body) setClockHands(playerRig.userData.body,state.clockMinutes);
     updateTimerUI();
     if(now-state.lastBroadcast>=75){state.lastBroadcast=now;broadcastSnapshot()}
@@ -1114,12 +1402,12 @@
     sendToHost(payload);
   }
 
-  function movementActive(){return Boolean(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD||keys.KeyQ||keys.KeyE||keys.Space)}
+  function movementActive(){return Boolean(keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD||keys.KeyQ||keys.KeyE||keys.Space||Math.abs(mobileInput.moveX)>.08||Math.abs(mobileInput.moveY)>.08||Math.abs(mobileInput.clockVertical)>.08)}
 
   function broadcastSnapshot(){
     const players=[];
     for(const p of state.playerStates.values()) players.push({...p});
-    const msg={type:'snapshot',mapId:state.mapId,remaining:state.remaining,clockMinutes:state.clockMinutes,clockSpeed:state.clockSpeed,actualClockIndex:state.actualClockIndex,players};
+    const msg={type:'snapshot',mapId:state.mapId,remaining:state.remaining,clockMinutes:state.clockMinutes,clockSpeed:state.clockSpeed,players};
     for(const c of state.conns.values()) if(c.open)c.send(msg);
     // Refresh host visuals for remote entities from authoritative state.
     updateRemotePlayers(players);
@@ -1131,15 +1419,16 @@
     return null;
   }
 
-  function handleClaim(clickerId,index){
+  function handleClaim(clickerId,targetId){
     if(!state.isHost || state.gameOver || !state.started)return;
     const clockId=getClockId();
-    if(index!==state.actualClockIndex){return}
+    if(!targetId || targetId!==clockId)return;
     if(clickerId===clockId)return;
-    const clicker=state.roomPlayers.get(clickerId); if(!clicker || clicker.role!=='human')return;
-    // The hunt only succeeds after the clock has actually drifted from 03:00.
+    const clicker=state.roomPlayers.get(clickerId);
+    if(!clicker || clicker.role!=='human')return;
     if(state.clockMinutes===START_MINUTES){
-      const c=state.conns.get(clickerId); if(c?.open)c.send({type:'notice',text:'まだ03:00のままです。時間がずれるまで待とう。'});
+      const c=state.conns.get(clickerId);
+      if(c?.open)c.send({type:'notice',text:'その時計はまだ03:00。時間がずれるまで待とう。'});
       return;
     }
     finishGame(clickerId,'found',clicker.name);
@@ -1158,7 +1447,7 @@
   }
 
   function showWinner(name,reason,isClockWinner){
-    hud.classList.add('hidden'); winnerScreen.classList.remove('hidden');
+    hud.classList.add('hidden'); winnerScreen.classList.remove('hidden'); setMobileVisibility();
     if(isClockWinner){
       winIcon.textContent='🕰️'; winnerTitle.textContent='時計の勝利'; winnerDesc.textContent='5分間見つからず、生き残りました。';
     }else{
@@ -1169,13 +1458,17 @@
 
   // -------------------- UI --------------------
   function applyRoleUI(){
-    roleBadge.textContent=state.role==='clock'?'役職: 時計':'役職: 鬼（人間）';
-    roleBadge.classList.toggle('roleClock',state.role==='clock'); roleBadge.classList.toggle('roleHuman',state.role!=='clock');
+    roleBadge.textContent=state.role==='clock'?'役職: 時計（3人称）':'役職: 鬼（1人称）';
+    roleBadge.classList.toggle('roleClock',state.role==='clock');
+    roleBadge.classList.toggle('roleHuman',state.role!=='clock');
     clockPanel.classList.toggle('hidden',state.role!=='clock');
-    controlHint.textContent=state.role==='clock'?'WASDで移動 / Q・E・Spaceで上下 / マウスで見る':'WASDで歩く / マウスで見る / 中央に時計を合わせてクリック';
+    controlHint.textContent=state.role==='clock'
+      ? '時計そのものを操作 / WASD移動 / Q・E・Space上下 / スマホはスティック'
+      : '一人称視点 / WASD移動 / マウスで上下左右 / 中央に時計を合わせてクリック / スマホは攻撃ボタン';
     mapLabel.textContent=mapNames[state.mapId] || state.mapId;
     clockReadout.textContent=formatClock(state.clockMinutes);
     if(state.role==='clock')speedInput.value=String(state.clockSpeed);
+    setMobileVisibility();
   }
 
   function renderLobbyPlayers(){
